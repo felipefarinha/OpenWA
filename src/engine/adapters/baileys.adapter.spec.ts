@@ -19,6 +19,17 @@ class FakeSock extends EventEmitter {
   public sendMessage = jest.fn();
   public onWhatsApp = jest.fn();
   public sendPresenceUpdate = jest.fn().mockResolvedValue(undefined);
+  public groupFetchAllParticipating = jest.fn();
+  public groupMetadata = jest.fn();
+  public groupCreate = jest.fn();
+  public groupParticipantsUpdate = jest.fn().mockResolvedValue(undefined);
+  public groupLeave = jest.fn().mockResolvedValue(undefined);
+  public groupUpdateSubject = jest.fn().mockResolvedValue(undefined);
+  public groupUpdateDescription = jest.fn().mockResolvedValue(undefined);
+  public groupInviteCode = jest.fn();
+  public groupRevokeInvite = jest.fn();
+  public profilePictureUrl = jest.fn();
+  public updateBlockStatus = jest.fn().mockResolvedValue(undefined);
   fire(event: string, arg: unknown): void {
     this.emitter.emit(event, arg);
   }
@@ -149,9 +160,8 @@ describe('BaileysAdapter lifecycle & status', () => {
 });
 
 describe('BaileysAdapter capability gating', () => {
-  it('throws EngineNotSupportedError for store-backed methods (e.g. getGroups, getChats)', async () => {
+  it('throws EngineNotSupportedError for store-backed methods (e.g. getChats)', async () => {
     const adapter = newAdapter();
-    await expect(adapter.getGroups()).rejects.toBeInstanceOf(EngineNotSupportedError);
     await expect(adapter.getChats()).rejects.toBeInstanceOf(EngineNotSupportedError);
   });
 });
@@ -520,5 +530,87 @@ describe('BaileysAdapter store-backed ops', () => {
     const adapter = await ready();
     await adapter.logout();
     expect(fakeStore.clearSession).toHaveBeenCalledWith('sess-1');
+  });
+});
+
+describe('BaileysAdapter group management', () => {
+  const META = {
+    id: '123-456@g.us',
+    subject: 'G',
+    participants: [{ id: '628999@s.whatsapp.net', admin: 'superadmin' }],
+  };
+
+  beforeEach(() => {
+    fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };
+    jest.clearAllMocks();
+  });
+
+  const ready = async (): Promise<BaileysAdapter> => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    fakeSock.fire('connection.update', { connection: 'open' });
+    return adapter;
+  };
+
+  it('getGroups maps groupFetchAllParticipating', async () => {
+    fakeSock.groupFetchAllParticipating.mockResolvedValue({ '123-456@g.us': META });
+    const adapter = await ready();
+    const groups = await adapter.getGroups();
+    expect(groups).toEqual([
+      { id: '123-456@g.us', name: 'G', participantsCount: 1, isAdmin: true, linkedParentJID: null },
+    ]);
+  });
+
+  it('getGroupInfo maps groupMetadata, and returns null when it rejects', async () => {
+    fakeSock.groupMetadata.mockResolvedValueOnce(META);
+    const adapter = await ready();
+    expect((await adapter.getGroupInfo('123-456@g.us'))?.id).toBe('123-456@g.us');
+    fakeSock.groupMetadata.mockRejectedValueOnce(new Error('not a group'));
+    expect(await adapter.getGroupInfo('x@g.us')).toBeNull();
+  });
+
+  it('createGroup returns the mapped new group', async () => {
+    fakeSock.groupCreate.mockResolvedValue(META);
+    const adapter = await ready();
+    const g = await adapter.createGroup('G', ['628111@s.whatsapp.net']);
+    expect(fakeSock.groupCreate).toHaveBeenCalledWith('G', ['628111@s.whatsapp.net']);
+    expect(g.id).toBe('123-456@g.us');
+  });
+
+  it.each([
+    ['addParticipants', 'add'],
+    ['removeParticipants', 'remove'],
+    ['promoteParticipants', 'promote'],
+    ['demoteParticipants', 'demote'],
+  ])('%s calls groupParticipantsUpdate with %s', async (method, action) => {
+    const adapter = await ready();
+    await (adapter as unknown as Record<string, (g: string, p: string[]) => Promise<void>>)[method]('123-456@g.us', [
+      '628111@s.whatsapp.net',
+    ]);
+    expect(fakeSock.groupParticipantsUpdate).toHaveBeenCalledWith('123-456@g.us', ['628111@s.whatsapp.net'], action);
+  });
+
+  it('leaveGroup / setGroupSubject / setGroupDescription delegate to the socket', async () => {
+    const adapter = await ready();
+    await adapter.leaveGroup('123-456@g.us');
+    expect(fakeSock.groupLeave).toHaveBeenCalledWith('123-456@g.us');
+    await adapter.setGroupSubject('123-456@g.us', 'New');
+    expect(fakeSock.groupUpdateSubject).toHaveBeenCalledWith('123-456@g.us', 'New');
+    await adapter.setGroupDescription('123-456@g.us', 'Desc');
+    expect(fakeSock.groupUpdateDescription).toHaveBeenCalledWith('123-456@g.us', 'Desc');
+  });
+
+  it('getGroupInviteCode / revokeGroupInviteCode return the code', async () => {
+    fakeSock.groupInviteCode.mockResolvedValue('ABC123');
+    fakeSock.groupRevokeInvite.mockResolvedValue('NEW456');
+    const adapter = await ready();
+    expect(await adapter.getGroupInviteCode('123-456@g.us')).toBe('ABC123');
+    expect(await adapter.revokeGroupInviteCode('123-456@g.us')).toBe('NEW456');
+  });
+
+  it('group ops reject with EngineNotReadyError before connect', async () => {
+    const adapter = newAdapter();
+    await adapter.initialize({});
+    await expect(adapter.getGroups()).rejects.toBeInstanceOf(EngineNotReadyError);
   });
 });

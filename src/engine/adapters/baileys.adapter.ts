@@ -7,6 +7,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import type { AnyMessageContent, MiscMessageGenerationOptions, WAMessage, WASocket } from '@whiskeysockets/baileys';
 import { buildIncomingMessageFromBaileys, mapBaileysStatus } from './baileys-message-mapper';
+import { mapBaileysGroup, mapBaileysGroupInfo } from './baileys-group-mapper';
 import type { ILogger } from '@whiskeysockets/baileys/lib/Utils/logger.js';
 import {
   ChatState,
@@ -335,6 +336,76 @@ export class BaileysAdapter implements IWhatsAppEngine {
     await this.sock!.sendMessage(chatId, { delete: target.key });
   }
 
+  // ----- Groups -----
+
+  async getGroups(): Promise<Group[]> {
+    this.ensureReady();
+    const all = await this.sock!.groupFetchAllParticipating();
+    const self = this.normalizedSelfJid();
+    return Object.values(all).map(metadata => mapBaileysGroup(metadata, self));
+  }
+
+  async getGroupInfo(groupId: string): Promise<GroupInfo | null> {
+    this.ensureReady();
+    try {
+      const metadata = await this.sock!.groupMetadata(groupId);
+      return mapBaileysGroupInfo(metadata);
+    } catch {
+      return null; // not a group / not found
+    }
+  }
+
+  async createGroup(name: string, participants: string[]): Promise<Group> {
+    this.ensureReady();
+    const metadata = await this.sock!.groupCreate(name, participants);
+    return mapBaileysGroup(metadata, this.normalizedSelfJid());
+  }
+
+  async addParticipants(groupId: string, participants: string[]): Promise<void> {
+    this.ensureReady();
+    await this.sock!.groupParticipantsUpdate(groupId, participants, 'add');
+  }
+
+  async removeParticipants(groupId: string, participants: string[]): Promise<void> {
+    this.ensureReady();
+    await this.sock!.groupParticipantsUpdate(groupId, participants, 'remove');
+  }
+
+  async promoteParticipants(groupId: string, participants: string[]): Promise<void> {
+    this.ensureReady();
+    await this.sock!.groupParticipantsUpdate(groupId, participants, 'promote');
+  }
+
+  async demoteParticipants(groupId: string, participants: string[]): Promise<void> {
+    this.ensureReady();
+    await this.sock!.groupParticipantsUpdate(groupId, participants, 'demote');
+  }
+
+  async leaveGroup(groupId: string): Promise<void> {
+    this.ensureReady();
+    await this.sock!.groupLeave(groupId);
+  }
+
+  async setGroupSubject(groupId: string, subject: string): Promise<void> {
+    this.ensureReady();
+    await this.sock!.groupUpdateSubject(groupId, subject);
+  }
+
+  async setGroupDescription(groupId: string, description: string): Promise<void> {
+    this.ensureReady();
+    await this.sock!.groupUpdateDescription(groupId, description);
+  }
+
+  async getGroupInviteCode(groupId: string): Promise<string> {
+    this.ensureReady();
+    return (await this.sock!.groupInviteCode(groupId)) ?? '';
+  }
+
+  async revokeGroupInviteCode(groupId: string): Promise<string> {
+    this.ensureReady();
+    return (await this.sock!.groupRevokeInvite(groupId)) ?? '';
+  }
+
   // ----- Gated: not supported by this minimal slice (no store) -----
   /* eslint-disable @typescript-eslint/no-unused-vars */
 
@@ -349,42 +420,6 @@ export class BaileysAdapter implements IWhatsAppEngine {
   }
   resolveContactPhone(_contactId: string): Promise<string | null> {
     return this.unsupported('resolveContactPhone');
-  }
-  getGroups(): Promise<Group[]> {
-    return this.unsupported('getGroups');
-  }
-  getGroupInfo(_groupId: string): Promise<GroupInfo | null> {
-    return this.unsupported('getGroupInfo');
-  }
-  createGroup(_name: string, _participants: string[]): Promise<Group> {
-    return this.unsupported('createGroup');
-  }
-  addParticipants(_groupId: string, _participants: string[]): Promise<void> {
-    return this.unsupported('addParticipants');
-  }
-  removeParticipants(_groupId: string, _participants: string[]): Promise<void> {
-    return this.unsupported('removeParticipants');
-  }
-  promoteParticipants(_groupId: string, _participants: string[]): Promise<void> {
-    return this.unsupported('promoteParticipants');
-  }
-  demoteParticipants(_groupId: string, _participants: string[]): Promise<void> {
-    return this.unsupported('demoteParticipants');
-  }
-  leaveGroup(_groupId: string): Promise<void> {
-    return this.unsupported('leaveGroup');
-  }
-  setGroupSubject(_groupId: string, _subject: string): Promise<void> {
-    return this.unsupported('setGroupSubject');
-  }
-  setGroupDescription(_groupId: string, _description: string): Promise<void> {
-    return this.unsupported('setGroupDescription');
-  }
-  getGroupInviteCode(_groupId: string): Promise<string> {
-    return this.unsupported('getGroupInviteCode');
-  }
-  revokeGroupInviteCode(_groupId: string): Promise<string> {
-    return this.unsupported('revokeGroupInviteCode');
   }
   getChatHistory(_chatId: string, _limit?: number, _includeMedia?: boolean): Promise<IncomingMessage[]> {
     return this.unsupported('getChatHistory');
