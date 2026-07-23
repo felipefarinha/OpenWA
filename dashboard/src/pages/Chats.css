@@ -1249,3 +1249,11 @@
   margin-bottom: 0.5rem;
   object-fit: cover;
 }
+
+/* Status viewer: shown in place of the image while a status media blob fails to load. */
+.chats-page .status-media-placeholder {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}

@@ -123,6 +123,41 @@ function ChatAvatar({ pictureUrl, kind }: { pictureUrl?: string | null; kind: Ch
   );
 }
 
+// Status image item. <img src="/api/..."> can't carry the X-API-Key header, so the bytes are
+// fetched via sessionApi (which does) and re-exposed as a local object URL. The URL is revoked on
+// unmount/statusId change to avoid leaking blob memory as the viewer browses items.
+function StatusMedia({ sessionId, statusId }: { sessionId: string | null; statusId: string }) {
+  const { t } = useTranslation();
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!sessionId) return undefined;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setSrc(null);
+    setError(false);
+    sessionApi
+      .getStatusMediaBlob(sessionId, statusId)
+      .then(blob => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [sessionId, statusId]);
+
+  if (error) return <span className="status-media-placeholder">{t('chats.status.mediaUnavailable')}</span>;
+  if (!src) return null;
+  return <img className="channel-media" src={src} alt="" />;
+}
+
 export function Chats() {
   const { t } = useTranslation();
   useDocumentTitle(t('nav.chats'));
@@ -177,6 +212,14 @@ export function Chats() {
     const el = channelFeedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [activeChannel?.id, channelMessages.data]);
+
+  // Same open-at-newest behavior for the status viewer pane, keyed off the active contact and its
+  // item list.
+  const statusFeedRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = statusFeedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeStatusContact?.contact.id, activeStatusContact?.items]);
 
   const {
     data: messages = [],
@@ -1060,7 +1103,7 @@ export function Chats() {
           </p>
         </div>
       ) : (
-        <div className={`chats-layout ${activeChat || activeChannel ? 'has-active-chat' : ''}`}>
+        <div className={`chats-layout ${activeChat || activeChannel || activeStatusContact ? 'has-active-chat' : ''}`}>
           {/* LEFT SIDEBAR: session & chat rooms */}
           <aside className="chats-sidebar">
             <div className="sidebar-header-box">
@@ -1656,6 +1699,35 @@ export function Chats() {
                       </div>
                     ))
                   )}
+                </div>
+              </div>
+            ) : activeStatusContact ? (
+              // Read-only status viewer: no send footer, reactions, delete, reply, or markChatRead —
+              // statuses are ephemeral broadcast posts, not a two-way conversation.
+              <div key={activeStatusContact.contact.id} className="channel-room">
+                <header className="chats-room-header">
+                  <button
+                    className="room-back"
+                    onClick={() => setActiveStatusContact(null)}
+                    aria-label={t('common.back')}
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+                  <CircleDashed size={20} />
+                  <h2>{activeStatusContact.contact.name ?? activeStatusContact.contact.id}</h2>
+                </header>
+                <div className="messages-list" ref={statusFeedRef}>
+                  {activeStatusContact.items.map(item => (
+                    <div key={item.id} className="message-bubble incoming">
+                      {item.mediaUrl && <StatusMedia sessionId={selectedSessionId || null} statusId={item.id} />}
+                      {(item.type === 'text' || !item.mediaUrl) && (
+                        <MessageBody text={item.caption ?? ''} className="message-text" />
+                      )}
+                      <span className="message-time">
+                        {formatChatTime(Math.floor(new Date(item.timestamp).getTime() / 1000))}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : (
