@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { ChatKind } from '../../../engine/identity/wa-id';
 
 const CHAT_KINDS: ChatKind[] = ['individual', 'group', 'channel', 'status', 'broadcast', 'unknown'];
@@ -23,6 +23,6 @@ export class ChatSummaryDto {
   @ApiProperty({ description: 'Unix seconds of the last activity.', example: 1700000010 })
   timestamp!: number;
 
-  @ApiProperty({ required: false, example: 'hi' })
+  @ApiPropertyOptional({ example: 'hi' })
   lastMessage?: string;
 }
