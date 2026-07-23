@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Statuses (stories) are now readable on both engines and retained for 24 hours.** Contact status
+  updates land in a dedicated 24-hour store as they arrive — so a status posted while the dashboard
+  was closed is still there — and `GET /sessions/:id/status` now serves them on the Baileys engine
+  too (previously whatsapp-web.js only). A new `GET /sessions/:id/status/:statusId/media` streams a
+  stored status image or video.
+
+- **New opt-in `status.received` webhook.** Subscribe a webhook to `status.received` to be notified
+  when a contact posts a status; the payload carries the contact, type, caption, and media flags (no
+  media blob — fetch it from the media endpoint). Off by default.
+
+- **The dashboard Status tab is now functional.** It lists contacts with active statuses, opens a
+  read-only viewer for a contact's updates (image and video), and can post a text or image status,
+  with a recipient picker on the Baileys engine.
+
 ## [0.10.8] - 2026-07-23
 
 ### Added
