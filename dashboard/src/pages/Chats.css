@@ -216,8 +216,9 @@
 
 .chats-page .chat-item-top {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: baseline;
+  gap: 6px;
 }
 
 .chats-page .chat-item-name {
@@ -233,6 +234,7 @@
   font-size: 0.75rem;
   color: var(--text-muted);
   flex-shrink: 0;
+  margin-inline-start: auto;
 }
 
 .chats-page .chat-item-bottom {

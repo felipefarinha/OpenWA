@@ -76,6 +76,7 @@ interface IncomingWsMessage {
   // folded into `metadata` on the persisted/history path), so declare it here to carry it through.
   call?: { video: boolean; missed: boolean };
   metadata?: ChatMessageView['metadata'];
+  kind?: ChatKind;
 }
 
 // Map an attachment MIME type to the neutral MessageType for the optimistic outgoing bubble, so the
@@ -362,6 +363,7 @@ export function Chats() {
           quotedMessage: newMsg.quotedMessage,
           call: newMsg.call,
         },
+        kind: newMsg.kind,
       };
 
       // Always write to the React Query cache for this message's session — keeps non-active chats
@@ -657,15 +659,26 @@ export function Chats() {
       } else {
         const chat = chats.find(c => c.id === hit.chatId);
         if (chat) {
-          setActiveTab('chats');
-          setActiveChat(chat);
-          setActiveChannel(null);
+          if (chat.kind === 'channel') {
+            // Channels render their own read-only list on the Channels tab, not via activeChat — the
+            // hit's message-highlight is intentionally dropped here since that pane has no per-message scroll target.
+            switchTab('channels');
+            pendingHitRef.current = null;
+          } else if (chat.kind === 'status') {
+            setActiveTab('status');
+            setActiveChat(chat);
+            setActiveChannel(null);
+          } else {
+            setActiveTab('chats');
+            setActiveChat(chat);
+            setActiveChannel(null);
+          }
         } else {
           pendingHitRef.current = null;
         }
       }
     },
-    [selectedSessionId, chats],
+    [selectedSessionId, chats, switchTab],
   );
 
   // After a session switch the chats list reloads — pick up the pending chat once it appears.
@@ -674,11 +687,20 @@ export function Chats() {
     if (!pending || activeChat?.id === pending.chatId) return;
     const chat = chats.find(c => c.id === pending.chatId);
     if (chat) {
-      setActiveTab('chats');
-      setActiveChat(chat);
-      setActiveChannel(null);
+      if (chat.kind === 'channel') {
+        switchTab('channels');
+        pendingHitRef.current = null;
+      } else if (chat.kind === 'status') {
+        setActiveTab('status');
+        setActiveChat(chat);
+        setActiveChannel(null);
+      } else {
+        setActiveTab('chats');
+        setActiveChat(chat);
+        setActiveChannel(null);
+      }
     }
-  }, [chats, activeChat]);
+  }, [chats, activeChat, switchTab]);
 
   // Best-effort scroll to the hit message. Runs as a layout effect (after useChatScrollPosition's
   // own restore on the same commit) so it overrides the bottom/saved jump with no visible flash.
@@ -894,6 +916,14 @@ export function Chats() {
   // Status tab: the wwjs aggregate status@broadcast row, if getChats returned one.
   const statusChats = chats.filter(c => c.kind === 'status' && searchMatch(c));
 
+  // Channels tab: same search box, filtered client-side like the other two tabs. The zero-state
+  // ("not subscribed to any channels") stays keyed on the unfiltered list below, so a non-matching
+  // search just renders an empty list instead of claiming there are no subscriptions at all.
+  const searchQueryLower = searchQuery.toLowerCase();
+  const filteredChannels = (channelsQuery.data ?? []).filter(
+    ch => ch.name.toLowerCase().includes(searchQueryLower) || ch.id.toLowerCase().includes(searchQueryLower),
+  );
+
   // Shared row markup for the Chats and Status lists — a plain function (not memoized) since it
   // closes over render-scoped state (activeChat, listPics) that already changes every render.
   const renderChatRow = (chat: Chat) => {
@@ -1079,7 +1109,7 @@ export function Chats() {
                     <span>{t('chats.channels.empty')}</span>
                   </div>
                 ) : (
-                  channelsQuery.data!.map(ch => (
+                  filteredChannels.map(ch => (
                     <div
                       key={ch.id}
                       className={`chat-item-card ${activeChannel?.id === ch.id ? 'active' : ''}`}
@@ -1515,17 +1545,41 @@ export function Chats() {
               // subscribed channels are a broadcast feed, not a two-way conversation.
               <div className="channel-room">
                 <header className="chats-room-header">
+                  <button
+                    className="room-back"
+                    onClick={() => setActiveChannel(null)}
+                    aria-label={t('common.back')}
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
                   <Megaphone size={20} />
                   <h2>{activeChannel.name}</h2>
                 </header>
                 <div className="messages-list">
-                  {(channelMessages.data ?? []).map(m => (
-                    <div key={m.id} className="message-bubble incoming">
-                      {m.hasMedia && m.mediaUrl && <img className="channel-media" src={m.mediaUrl} alt="" />}
-                      {m.body && <div className="message-text">{m.body}</div>}
-                      <span className="message-time">{formatChatTime(m.timestamp)}</span>
+                  {channelMessages.isLoading ? (
+                    <div className="messages-loading">
+                      <Loader2 className="animate-spin" size={32} />
+                      <span>{t('chats.loadingMessages')}</span>
                     </div>
-                  ))}
+                  ) : channelMessages.error ? (
+                    <div className="messages-empty">
+                      <MessageSquare size={32} />
+                      <span>{t('chats.loadMessagesError')}</span>
+                    </div>
+                  ) : (channelMessages.data ?? []).length === 0 ? (
+                    <div className="messages-empty">
+                      <MessageSquare size={32} />
+                      <span>{t('chats.noMessagesInChat')}</span>
+                    </div>
+                  ) : (
+                    (channelMessages.data ?? []).map(m => (
+                      <div key={m.id} className="message-bubble incoming">
+                        {m.hasMedia && m.mediaUrl && <img className="channel-media" src={m.mediaUrl} alt="" />}
+                        {m.body && <div className="message-text">{m.body}</div>}
+                        <span className="message-time">{formatChatTime(m.timestamp)}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             ) : (
