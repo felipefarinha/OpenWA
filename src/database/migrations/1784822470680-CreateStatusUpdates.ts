@@ -19,10 +19,13 @@ export class CreateStatusUpdates1784822470680 implements MigrationInterface {
 
     const isPostgres = queryRunner.dataSource.options.type === 'postgres';
     const boolFalse = isPostgres ? 'false' : '0';
+    const idColumn = isPostgres
+      ? `"id" varchar PRIMARY KEY NOT NULL DEFAULT gen_random_uuid()::varchar`
+      : `"id" varchar PRIMARY KEY NOT NULL`;
 
     await queryRunner.query(
       `CREATE TABLE "status_updates" (` +
-        `"id" varchar PRIMARY KEY NOT NULL, "sessionId" varchar NOT NULL, "contactJid" varchar NOT NULL, ` +
+        `${idColumn}, "sessionId" varchar NOT NULL, "contactJid" varchar NOT NULL, ` +
         `"contactName" varchar, "contactPushName" varchar, "waStatusId" varchar NOT NULL, "type" varchar NOT NULL, ` +
         `"caption" text, "mediaPath" varchar, "mediaMimetype" varchar, ` +
         `"mediaOmitted" boolean NOT NULL DEFAULT ${boolFalse}, "omitReason" varchar, "backgroundColor" varchar, ` +
