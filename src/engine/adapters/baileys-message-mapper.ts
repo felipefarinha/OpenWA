@@ -1,4 +1,5 @@
 import { DeliveryStatus, IncomingMessage, MessageType } from '../interfaces/whatsapp-engine.interface';
+import { chatKind } from '../identity/wa-id';
 
 /**
  * Map a Baileys message content-type token (from `getContentType`) to the engine-neutral
@@ -186,6 +187,7 @@ export function buildIncomingMessageFromBaileys(
     timestamp: fields.timestamp,
     fromMe: fields.fromMe,
     isGroup,
+    kind: chatKind(chatId),
     isStatusBroadcast,
   };
 

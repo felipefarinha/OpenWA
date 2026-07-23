@@ -1,6 +1,6 @@
 import type { Chat, Contact as BaileysContact, WAMessage, WAMessageKey } from '@whiskeysockets/baileys';
 import { ChatSummary, Contact } from '../interfaces/whatsapp-engine.interface';
-import { parseWaId, toNeutralJid as canonicalizeWaId, userPart } from '../identity/wa-id';
+import { chatKind, parseWaId, toNeutralJid as canonicalizeWaId, userPart } from '../identity/wa-id';
 import type { LidMappingStore } from '../identity/lid-mapping-store.service';
 
 interface LastMessage {
@@ -308,6 +308,7 @@ export class BaileysSessionStore {
       id: this.toNeutralJid(id),
       name: c.name ?? this.resolveContactName(id),
       isGroup: id.endsWith('@g.us'),
+      kind: chatKind(this.toNeutralJid(id)),
       unreadCount: c.unreadCount ?? 0,
       timestamp: last?.timestamp ?? this.toUnixSeconds(c.conversationTimestamp),
       lastMessage: last?.text,

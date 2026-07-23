@@ -42,6 +42,7 @@ describe('BaileysSessionStore', () => {
         id: '628111@c.us', // listing ids are emitted in the neutral dialect
         name: 'Alice',
         isGroup: false,
+        kind: 'individual',
         unreadCount: 2,
         timestamp: 200,
         lastMessage: 'newest',

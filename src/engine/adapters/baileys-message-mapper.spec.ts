@@ -138,6 +138,10 @@ describe('buildIncomingMessageFromBaileys', () => {
     expect(r.fromMe).toBe(false);
   });
 
+  it('stamps kind from the chat JID', () => {
+    expect(buildIncomingMessageFromBaileys({ ...base, remoteJid: 'abc@newsletter' }).kind).toBe('channel');
+  });
+
   it('inverts from/to for an outgoing (fromMe) message', () => {
     const r = buildIncomingMessageFromBaileys({ ...base, fromMe: true });
     expect(r.from).toBe('628999@s.whatsapp.net'); // self

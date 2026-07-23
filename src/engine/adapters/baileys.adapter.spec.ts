@@ -3033,6 +3033,7 @@ describe('BaileysAdapter contact + chat reads', () => {
       id: '628111@c.us',
       name: 'Alice',
       isGroup: false,
+      kind: 'individual',
       unreadCount: 1,
       timestamp: 1700000010,
       lastMessage: 'hi',

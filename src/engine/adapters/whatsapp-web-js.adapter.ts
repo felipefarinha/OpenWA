@@ -49,7 +49,7 @@ import {
   IncomingCallEvent,
 } from '../interfaces/whatsapp-engine.interface';
 import { resolveWebVersionPin } from '../wa-web-version';
-import { isChannelJid, userPart } from '../identity/wa-id';
+import { chatKind, isChannelJid, userPart } from '../identity/wa-id';
 import { LidMappingStore } from '../identity/lid-mapping-store.service';
 import { ChatLabelsUnsupportedError } from '../../common/errors/chat-labels-unsupported.error';
 import { createLogger } from '../../common/services/logger.service';
@@ -2126,6 +2126,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       out.chatId = chatId;
       out.isGroup = chatId.endsWith('@g.us');
       out.isStatusBroadcast = chatId === 'status@broadcast';
+      out.kind = chatKind(chatId);
       const call = extractWwebjsCall(msg);
       if (call) out.call = call;
       // Mirror the live handler's location + quoted-message enrichment so history renders identically —
@@ -2595,6 +2596,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         id,
         name: chat.name || id,
         isGroup: Boolean(chat.isGroup),
+        kind: chatKind(id),
         unreadCount: chat.unreadCount || 0,
         timestamp: chat.timestamp || 0,
         // A location message's body is the base64 map thumbnail; don't surface it as the chat preview.

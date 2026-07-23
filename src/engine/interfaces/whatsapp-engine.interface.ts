@@ -14,6 +14,8 @@
 // (Ids the engine ACCEPTS - e.g. `sendTextMessage(chatId)` - may be neutral; the adapter de-normalizes
 // to its own dialect. Full inbound + outbound conformance is being rolled out per-engine.)
 
+import type { ChatKind } from '../identity/wa-id';
+
 export enum EngineStatus {
   DISCONNECTED = 'disconnected',
   INITIALIZING = 'initializing',
@@ -73,6 +75,8 @@ export interface IncomingMessage {
   timestamp: number;
   fromMe: boolean;
   isGroup: boolean;
+  /** User-facing chat kind of the conversation this message belongs to (derived from `chatId`). */
+  kind: ChatKind;
   /**
    * True for a status/story broadcast (not a real conversation). Set by the adapter so engine-neutral
    * code can skip these without matching an engine-specific pseudo-JID (e.g. `status@broadcast`).
@@ -340,6 +344,8 @@ export interface ChatSummary {
   id: string;
   name: string;
   isGroup: boolean;
+  /** User-facing chat kind. `isGroup` is retained for back-compat; `kind` is the full discriminator. */
+  kind: ChatKind;
   unreadCount: number;
   timestamp: number;
   lastMessage?: string;

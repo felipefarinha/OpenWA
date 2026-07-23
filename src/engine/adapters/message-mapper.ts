@@ -1,5 +1,6 @@
 import { EditedMessage, IncomingMessage, MessageContact, MessageType } from '../interfaces/whatsapp-engine.interface';
 import type { SerializedWid } from '../types/whatsapp-web-js.types';
+import { chatKind } from '../identity/wa-id';
 
 /**
  * Map a whatsapp-web.js `MessageTypes` token to the engine-neutral {@link MessageType}, so no
@@ -90,6 +91,7 @@ export function buildIncomingMessageBase(msg: RawMessageFields): IncomingMessage
     timestamp: msg.timestamp,
     fromMe: msg.fromMe,
     isGroup: chatId.endsWith('@g.us'),
+    kind: chatKind(chatId),
     // Flag status/story broadcasts here (the engine-specific `status@broadcast` pseudo-JID stays in
     // the adapter) so engine-neutral code can skip them without matching the literal.
     isStatusBroadcast: msg.to === 'status@broadcast' || chatId === 'status@broadcast',

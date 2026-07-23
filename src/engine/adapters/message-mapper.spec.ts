@@ -29,6 +29,10 @@ describe('buildIncomingMessageBase', () => {
     expect(r.isLidSender).toBeUndefined(); // a normal @c.us sender is not flagged
   });
 
+  it('stamps kind from the chat JID', () => {
+    expect(buildIncomingMessageBase({ ...base, from: '12036@g.us' }).kind).toBe('group');
+  });
+
   it('reads a renamed `$1` id when the dependency has not normalized it (#747)', () => {
     // The live inbound path. Without this, every arriving message on a renamed build carries
     // `id: undefined` — no dedup key, no reply target, nothing to match an ack against.
