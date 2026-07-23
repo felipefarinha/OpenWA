@@ -1596,6 +1596,7 @@ describe('SessionService', () => {
         timestamp: 1,
         fromMe: false,
         isGroup: false,
+        kind: 'individual',
       });
       await new Promise(resolve => setImmediate(resolve));
 
@@ -2624,6 +2625,7 @@ describe('SessionService', () => {
         timestamp: 1,
         fromMe: false,
         isGroup: false,
+        kind: 'individual',
       });
       await flush();
 
@@ -2659,6 +2661,7 @@ describe('SessionService', () => {
             timestamp: 1,
             fromMe: false,
             isGroup: false,
+            kind: 'individual',
           },
         ]);
         await flush();
@@ -2695,6 +2698,7 @@ describe('SessionService', () => {
             timestamp: 1,
             fromMe: true,
             isGroup: false,
+            kind: 'individual',
           },
         ]);
         await flush();
@@ -2737,6 +2741,7 @@ describe('SessionService', () => {
             timestamp: 1,
             fromMe: false,
             isGroup: false,
+            kind: 'individual',
             ephemeralDuration: 86400,
           },
         ]);
@@ -2764,6 +2769,7 @@ describe('SessionService', () => {
             timestamp: 1,
             fromMe: false,
             isGroup: false,
+            kind: 'individual',
             ephemeralDuration: 86400,
           },
         ]);
@@ -2792,6 +2798,7 @@ describe('SessionService', () => {
             timestamp: 1,
             fromMe: false,
             isGroup: false,
+            kind: 'individual',
             // no ephemeralDuration — a regular chat message must never be dropped.
           },
         ]);
