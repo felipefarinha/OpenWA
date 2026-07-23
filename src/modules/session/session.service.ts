@@ -682,11 +682,29 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   /**
-   * Hook point for the status.received dispatch (webhook/WS/hook), called once an inbound status row
-   * is ingested. Intentionally a no-op for now — wired up separately so ingest itself ships first.
+   * Dispatches the opt-in `status.received` webhook once an inbound status row is ingested.
+   * `WebhookService.dispatch` already filters delivery to webhooks whose `events` array includes
+   * `status.received`, so no extra gating is needed here. No media bytes are included in the
+   * payload — consumers fetch media via the status media endpoint.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private dispatchStatusReceived(_sessionId: string, _row: StatusUpdate): void {}
+  private dispatchStatusReceived(sessionId: string, row: StatusUpdate): void {
+    void this.webhookService.dispatch(sessionId, 'status.received', {
+      sessionId,
+      statusId: row.waStatusId,
+      contact: {
+        id: row.contactJid,
+        ...(row.contactName ? { name: row.contactName } : {}),
+        ...(row.contactPushName ? { pushName: row.contactPushName } : {}),
+      },
+      type: row.type,
+      ...(row.caption ? { caption: row.caption } : {}),
+      hasMedia: Boolean(row.mediaPath) && !row.mediaOmitted,
+      mediaOmitted: row.mediaOmitted,
+      ...(row.omitReason ? { omitReason: row.omitReason } : {}),
+      postedAt: row.postedAt,
+      expiresAt: row.expiresAt,
+    });
+  }
 
   /**
    * Persist pre-connection history into the `messages` table for the chat view, without webhook/hook/ws
@@ -881,8 +899,11 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
         if (!this.isLiveEngine(id, engine)) return;
         // Status/Story posts arrive via the inbound path for some engines; ingest them into the
         // status store instead of the message pipeline. Mirrors the isStatusBroadcast guard in
-        // onMessageCreate below (own-send echo — that branch stays a plain drop).
+        // onMessageCreate below: an own-send echo (fromMe) stays a plain drop — never ingested,
+        // never dispatched — so a status you posted never re-appears in your own webhooks/API as
+        // if a contact had posted it.
         if (message.isStatusBroadcast) {
+          if (message.fromMe) return;
           const status = buildIncomingStatus(message);
           if (status) {
             void this.statusStore

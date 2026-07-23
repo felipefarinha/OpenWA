@@ -2208,6 +2208,49 @@ describe('SessionService', () => {
       expect(dispatchedEvents('message.received')).toHaveLength(0);
     });
 
+    it('dispatches status.received with the ingested row once ingest resolves', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      (statusStore.ingest as jest.Mock).mockResolvedValueOnce({
+        waStatusId: 'st1',
+        contactJid: '628111@c.us',
+        contactName: 'Alice',
+        type: 'text',
+        caption: 'hi',
+        mediaOmitted: false,
+        postedAt: 1000,
+        expiresAt: 1000 + 86400000,
+      });
+
+      callbacks.onMessage!(
+        makeMessage({
+          id: 'st1',
+          from: 'status@broadcast',
+          to: 'me@c.us',
+          chatId: 'status@broadcast',
+          fromMe: false,
+          isStatusBroadcast: true,
+          author: '628111@c.us',
+          kind: 'status',
+        }),
+      );
+      await flush();
+
+      expect(webhookService.dispatch).toHaveBeenCalledWith(
+        'sess-uuid-1',
+        'status.received',
+        expect.objectContaining({
+          statusId: 'st1',
+          contact: { id: '628111@c.us', name: 'Alice' },
+          type: 'text',
+          caption: 'hi',
+          hasMedia: false,
+          mediaOmitted: false,
+          postedAt: 1000,
+          expiresAt: 1000 + 86400000,
+        }),
+      );
+    });
+
     it('skips persist and dispatch for ephemeral messages when STORE_EPHEMERAL_MESSAGES=false', async () => {
       process.env.STORE_EPHEMERAL_MESSAGES = 'false';
       const callbacks = await startAndCaptureCallbacks();
