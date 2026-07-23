@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **German (`de`) dashboard translation.** The dashboard now ships a full German locale and offers
-  "Deutsch" in the language switcher. All 688 translation keys are covered, so German users get a
+  "Deutsch" in the language switcher. All 689 translation keys are covered, so German users get a
   fully localized UI instead of the English fallback. Thanks @rjsebening.
 
 ### Fixed
