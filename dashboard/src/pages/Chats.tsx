@@ -9,6 +9,8 @@ import {
   Loader2,
   User,
   Users,
+  Megaphone,
+  CircleDashed,
   AlertCircle,
   MessageSquare,
   Paperclip,
@@ -28,6 +30,7 @@ import {
   asMessageType,
   type Session,
   type Chat,
+  type ChatKind,
   type MessageType,
   type SearchHit,
 } from '../services/api';
@@ -92,7 +95,14 @@ const getMediaSrc = (media?: MessageMedia): string => {
 // Chat list avatar. Renders from the sidebar's ONE batch request (useProfilePictures) — firing a
 // query per row burst the per-IP throttle into 429s. The generic icon stays while the batch loads
 // or when the contact hides their picture.
-function ChatAvatar({ pictureUrl, isGroup }: { pictureUrl?: string | null; isGroup: boolean }) {
+function KindIcon({ kind }: { kind: ChatKind }) {
+  if (kind === 'group' || kind === 'broadcast') return <Users size={20} />;
+  if (kind === 'channel') return <Megaphone size={20} />;
+  if (kind === 'status') return <CircleDashed size={20} />;
+  return <User size={20} />;
+}
+
+function ChatAvatar({ pictureUrl, kind }: { pictureUrl?: string | null; kind: ChatKind }) {
   if (pictureUrl) {
     return (
       <div className="chat-avatar">
@@ -100,7 +110,11 @@ function ChatAvatar({ pictureUrl, isGroup }: { pictureUrl?: string | null; isGro
       </div>
     );
   }
-  return <div className="chat-avatar">{isGroup ? <Users size={20} /> : <User size={20} />}</div>;
+  return (
+    <div className="chat-avatar">
+      <KindIcon kind={kind} />
+    </div>
+  );
 }
 
 export function Chats() {
@@ -173,7 +187,7 @@ export function Chats() {
   // (notably @lid privacy ids, which are NOT phones and must never be formatted as one) resolve
   // the real number through the engine — cached a day, and only fired when local formatting failed.
   const activePhoneDisplay = activeChat ? formatPhoneForDisplay(activeChat.id) : null;
-  const needsPhoneResolution = Boolean(activeChat && !activeChat.isGroup && !activePhoneDisplay);
+  const needsPhoneResolution = Boolean(activeChat && activeChat.kind === 'individual' && !activePhoneDisplay);
   const resolvedPhoneQ = useResolvedPhone(
     needsPhoneResolution ? selectedSessionId || undefined : undefined,
     needsPhoneResolution ? activeChat?.id : undefined,
@@ -946,13 +960,18 @@ export function Chats() {
                       className={`chat-item-card ${isActive ? 'active' : ''}`}
                       onClick={() => setActiveChat(chat)}
                     >
-                      <ChatAvatar pictureUrl={listPics.data?.[chat.id]} isGroup={chat.isGroup} />
+                      <ChatAvatar pictureUrl={listPics.data?.[chat.id]} kind={chat.kind} />
 
                       <div className="chat-item-info">
                         <div className="chat-item-top">
                           <span className="chat-item-name" title={chat.name || chat.id}>
                             {chat.name || chat.id.split('@')[0]}
                           </span>
+                          {chat.kind !== 'individual' && chat.kind !== 'unknown' && (
+                            <span className={`chat-kind-badge kind-${chat.kind}`}>
+                              {t(`chats.kind.${chat.kind}`)}
+                            </span>
+                          )}
                           {/* Ternary, not `&&`: a chat with no messages carries timestamp 0, and React
                               renders the number 0 as text — so `0 && <span/>` painted a literal "0"
                               where the time belongs, on every such row. */}
@@ -1001,10 +1020,8 @@ export function Chats() {
                         // Signed CDN URLs rotate every few hours; refetch the slice on a stale load.
                         onError={() => activePp.refetch()}
                       />
-                    ) : activeChat.isGroup ? (
-                      <Users size={20} />
                     ) : (
-                      <User size={20} />
+                      <KindIcon kind={activeChat.kind} />
                     )}
                   </div>
                   <div className="room-contact-info">

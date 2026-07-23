@@ -237,6 +237,15 @@
   box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3);
 }
 
+.chats-page .chat-kind-badge {
+  font-size: 0.7rem;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* =============================================================================
    CHAT ROOM: Right Column
    ============================================================================= */
