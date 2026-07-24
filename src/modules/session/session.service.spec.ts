@@ -20,6 +20,7 @@ import { LidMappingStoreService } from '../../engine/identity/lid-mapping-store.
 import { EventsGateway } from '../events/events.gateway';
 import { WebhookService } from '../webhook/webhook.service';
 import { HookManager } from '../../core/hooks';
+import { StatusStoreService } from '../status-store/status-store.service';
 import {
   IncomingMessage,
   EngineEventCallbacks,
@@ -62,6 +63,7 @@ describe('SessionService', () => {
   let hookManager: jest.Mocked<Partial<HookManager>>;
   let configService: jest.Mocked<Partial<ConfigService>>;
   let lidMappingStore: jest.Mocked<Partial<LidMappingStoreService>>;
+  let statusStore: jest.Mocked<Partial<StatusStoreService>>;
   let mockEngine: Record<string, jest.Mock>;
 
   beforeEach(async () => {
@@ -119,6 +121,9 @@ describe('SessionService', () => {
       sendChatState: jest.fn().mockResolvedValue(undefined),
       resolveContactPhone: jest.fn().mockResolvedValue('628111222333'),
       rejectCall: jest.fn().mockResolvedValue(undefined),
+      getContactStatuses: jest.fn().mockResolvedValue([]),
+      getChatHistory: jest.fn().mockResolvedValue([]),
+      getContactById: jest.fn().mockResolvedValue(null),
     };
 
     engineFactory = {
@@ -161,6 +166,10 @@ describe('SessionService', () => {
       lidsForPhone: jest.fn().mockReturnValue([]),
     };
 
+    statusStore = {
+      ingest: jest.fn().mockResolvedValue({}),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SessionService,
@@ -182,6 +191,7 @@ describe('SessionService', () => {
         { provide: HookManager, useValue: hookManager },
         { provide: ConfigService, useValue: configService },
         { provide: LidMappingStoreService, useValue: lidMappingStore },
+        { provide: StatusStoreService, useValue: statusStore },
       ],
     }).compile();
 
@@ -2173,6 +2183,76 @@ describe('SessionService', () => {
       expect(dispatchedEvents('message.received')).toHaveLength(0);
     });
 
+    it('ingests an inbound status broadcast into the status store instead of dropping it', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      (messageRepository.insert as jest.Mock).mockClear();
+
+      callbacks.onMessage!(
+        makeMessage({
+          id: 'st1',
+          from: 'status@broadcast',
+          to: 'me@c.us',
+          chatId: 'status@broadcast',
+          fromMe: false,
+          isStatusBroadcast: true,
+          author: '628111@c.us',
+          kind: 'status',
+        }),
+      );
+      await flush();
+
+      expect(statusStore.ingest).toHaveBeenCalledWith(
+        'sess-uuid-1',
+        expect.objectContaining({ waStatusId: 'st1', contactJid: '628111@c.us' }),
+      );
+      // Statuses never fall through to the messages table or the message.received webhook.
+      expect(messageRepository.insert).not.toHaveBeenCalled();
+      expect(dispatchedEvents('message.received')).toHaveLength(0);
+    });
+
+    it('dispatches status.received with the ingested row once ingest resolves', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      (statusStore.ingest as jest.Mock).mockResolvedValueOnce({
+        waStatusId: 'st1',
+        contactJid: '628111@c.us',
+        contactName: 'Alice',
+        type: 'text',
+        caption: 'hi',
+        mediaOmitted: false,
+        postedAt: 1000,
+        expiresAt: 1000 + 86400000,
+      });
+
+      callbacks.onMessage!(
+        makeMessage({
+          id: 'st1',
+          from: 'status@broadcast',
+          to: 'me@c.us',
+          chatId: 'status@broadcast',
+          fromMe: false,
+          isStatusBroadcast: true,
+          author: '628111@c.us',
+          kind: 'status',
+        }),
+      );
+      await flush();
+
+      expect(webhookService.dispatch).toHaveBeenCalledWith(
+        'sess-uuid-1',
+        'status.received',
+        expect.objectContaining({
+          statusId: 'st1',
+          contact: { id: '628111@c.us', name: 'Alice' },
+          type: 'text',
+          caption: 'hi',
+          hasMedia: false,
+          mediaOmitted: false,
+          postedAt: 1000,
+          expiresAt: 1000 + 86400000,
+        }),
+      );
+    });
+
     it('skips persist and dispatch for ephemeral messages when STORE_EPHEMERAL_MESSAGES=false', async () => {
       process.env.STORE_EPHEMERAL_MESSAGES = 'false';
       const callbacks = await startAndCaptureCallbacks();
@@ -2520,6 +2600,135 @@ describe('SessionService', () => {
       expect(auth).toHaveLength(1);
       expect(auth[0][0]).toBe('sess-uuid-1');
       expect(auth[0][2]).toMatchObject({ sessionId: 'sess-uuid-1', phone: '628123', pushName: 'Alice' });
+    });
+
+    it('seeds the status store from the status-broadcast chat history when the engine reports ready', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      mockEngine.getChatHistory.mockResolvedValue([
+        makeMessage({
+          id: 'st-a',
+          from: 'status@broadcast',
+          chatId: 'status@broadcast',
+          isStatusBroadcast: true,
+          author: '628111@c.us',
+          kind: 'status',
+          type: 'text',
+          body: 'hi',
+          timestamp: 1700000000,
+          contact: { id: '628111@c.us', name: 'Alice', pushName: 'Ali' },
+        }),
+        makeMessage({
+          id: 'st-b',
+          from: 'status@broadcast',
+          chatId: 'status@broadcast',
+          isStatusBroadcast: true,
+          author: '628222@c.us',
+          kind: 'status',
+          type: 'image',
+          body: '',
+          timestamp: 1700000001,
+        }),
+        // Poster resolves to the shared pseudo-JID → buildIncomingStatus returns null → never ingested.
+        makeMessage({
+          id: 'st-self',
+          from: 'status@broadcast',
+          chatId: 'status@broadcast',
+          isStatusBroadcast: true,
+          author: 'status@broadcast',
+          kind: 'status',
+          type: 'text',
+        }),
+      ]);
+      // st-b's message carries no cached contact name; the seed resolves it via getContactById.
+      mockEngine.getContactById.mockImplementation((jid: string) =>
+        Promise.resolve(
+          jid === '628222@c.us'
+            ? {
+                id: '628222@c.us',
+                name: 'Bob',
+                pushName: 'Bobby',
+                number: '628222',
+                isMyContact: true,
+                isBlocked: false,
+              }
+            : null,
+        ),
+      );
+
+      callbacks.onReady!('628123', 'Alice');
+      await flush();
+
+      // Reads the status-broadcast chat's own messages (with media), not the near-empty-at-ready
+      // getBroadcasts collection.
+      expect(mockEngine.getChatHistory).toHaveBeenCalledWith('status@broadcast', 50, true);
+      expect(mockEngine.getContactStatuses).not.toHaveBeenCalled();
+      // Two usable statuses ingested; the pseudo-JID poster is filtered out.
+      expect(statusStore.ingest).toHaveBeenCalledTimes(2);
+      expect(statusStore.ingest).toHaveBeenNthCalledWith(
+        1,
+        'sess-uuid-1',
+        expect.objectContaining({
+          waStatusId: 'st-a',
+          contactJid: '628111@c.us',
+          contactName: 'Alice',
+          contactPushName: 'Ali',
+          type: 'text',
+          caption: 'hi',
+          postedAt: 1700000000000,
+        }),
+      );
+      // st-b had no cached name, so the seed backfilled it from getContactById.
+      expect(statusStore.ingest).toHaveBeenNthCalledWith(
+        2,
+        'sess-uuid-1',
+        expect.objectContaining({
+          waStatusId: 'st-b',
+          contactJid: '628222@c.us',
+          type: 'image',
+          contactName: 'Bob',
+          contactPushName: 'Bobby',
+        }),
+      );
+      // The lookup runs only for the poster that lacked a name; st-a already had one.
+      expect(mockEngine.getContactById).toHaveBeenCalledWith('628222@c.us');
+      expect(mockEngine.getContactById).not.toHaveBeenCalledWith('628111@c.us');
+    });
+
+    it('seeds status media downloaded with the history so it renders like a live post', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      const media = { mimetype: 'image/png', data: 'QUJD' };
+      mockEngine.getChatHistory.mockResolvedValue([
+        makeMessage({
+          id: 'st-c',
+          from: 'status@broadcast',
+          chatId: 'status@broadcast',
+          isStatusBroadcast: true,
+          author: '628333@c.us',
+          kind: 'status',
+          type: 'image',
+          body: '',
+          timestamp: 1700000002,
+          media,
+        }),
+      ]);
+
+      callbacks.onReady!('628123', 'Alice');
+      await flush();
+
+      expect(statusStore.ingest).toHaveBeenCalledWith(
+        'sess-uuid-1',
+        expect.objectContaining({ waStatusId: 'st-c', media }),
+      );
+    });
+
+    it('swallows a status-history failure on ready (e.g. Baileys has no status chat) without throwing', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      mockEngine.getChatHistory.mockRejectedValue(new Error('not supported'));
+
+      expect(() => callbacks.onReady!('628123', 'Alice')).not.toThrow();
+      await flush();
+
+      expect(statusStore.ingest).not.toHaveBeenCalled();
     });
 
     it('dispatches session.disconnected with the reason when the engine disconnects', async () => {

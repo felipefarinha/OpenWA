@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "Status",
-      "placeholderDesc": "Status-Updates pro Kontakt werden in einem zukünftigen Update verfügbar sein."
+      "placeholderDesc": "Status-Updates pro Kontakt werden in einem zukünftigen Update verfügbar sein.",
+      "itemCount": "{{count}} Update",
+      "itemCount_other": "{{count}} Updates",
+      "empty": "Kein Kontakt hat einen aktiven Status.",
+      "mediaUnavailable": "Medien nicht verfügbar",
+      "compose": "Status posten",
+      "composeText": "Text",
+      "composeImage": "Bild",
+      "recipients": "Wer das sehen kann",
+      "recipientsHint": "Baileys benötigt eine Empfängerliste; whatsapp-web.js verwendet deine Status-Datenschutz-Zielgruppe.",
+      "noContacts": "Keine Kontakte gefunden",
+      "caption": "Bildunterschrift",
+      "backgroundColor": "Hintergrundfarbe",
+      "font": "Schriftart",
+      "fontDefault": "Standard",
+      "orLabel": "oder",
+      "post": "Posten",
+      "posted": "Status gepostet",
+      "postFailed": "Status konnte nicht gepostet werden"
     },
     "channels": {
       "notSupported": "Kanäle werden von der Baileys-Engine nicht unterstützt.",

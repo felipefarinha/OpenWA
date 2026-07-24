@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "סטטוס",
-      "placeholderDesc": "עדכוני סטטוס לפי איש קשר יגיעו בעדכון עתידי."
+      "placeholderDesc": "עדכוני סטטוס לפי איש קשר יגיעו בעדכון עתידי.",
+      "itemCount": "עדכון {{count}}",
+      "itemCount_other": "{{count}} עדכונים",
+      "empty": "לאף איש קשר אין סטטוס פעיל.",
+      "mediaUnavailable": "המדיה אינה זמינה",
+      "compose": "פרסם סטטוס",
+      "composeText": "טקסט",
+      "composeImage": "תמונה",
+      "recipients": "מי יכול לראות את זה",
+      "recipientsHint": "Baileys דורש רשימת נמענים; whatsapp-web.js משתמש בקהל פרטיות הסטטוס שלך.",
+      "noContacts": "לא נמצאו אנשי קשר",
+      "caption": "כיתוב",
+      "backgroundColor": "צבע רקע",
+      "font": "גופן",
+      "fontDefault": "ברירת מחדל",
+      "orLabel": "או",
+      "post": "פרסם",
+      "posted": "הסטטוס פורסם",
+      "postFailed": "לא ניתן היה לפרסם את הסטטוס"
     },
     "channels": {
       "notSupported": "ערוצים אינם נתמכים במנוע Baileys.",

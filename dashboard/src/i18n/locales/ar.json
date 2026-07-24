@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "الحالة",
-      "placeholderDesc": "ستتوفر تحديثات الحالة لكل جهة اتصال في تحديث مستقبلي."
+      "placeholderDesc": "ستتوفر تحديثات الحالة لكل جهة اتصال في تحديث مستقبلي.",
+      "itemCount": "تحديث {{count}}",
+      "itemCount_other": "{{count}} تحديثات",
+      "empty": "لا توجد جهات اتصال لديها حالة نشطة.",
+      "mediaUnavailable": "الوسائط غير متوفرة",
+      "compose": "نشر حالة",
+      "composeText": "نص",
+      "composeImage": "صورة",
+      "recipients": "من يمكنه رؤية هذا",
+      "recipientsHint": "يتطلب Baileys قائمة مستلمين؛ يستخدم whatsapp-web.js جمهور خصوصية الحالة الخاص بك.",
+      "noContacts": "لم يتم العثور على جهات اتصال",
+      "caption": "التسمية التوضيحية",
+      "backgroundColor": "لون الخلفية",
+      "font": "الخط",
+      "fontDefault": "افتراضي",
+      "orLabel": "أو",
+      "post": "نشر",
+      "posted": "تم نشر الحالة",
+      "postFailed": "تعذر نشر الحالة"
     },
     "channels": {
       "notSupported": "القنوات غير مدعومة على محرك Baileys.",

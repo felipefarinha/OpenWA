@@ -24,7 +24,7 @@ WebhookEvent = Literal[
     "message.received", "message.sent", "message.ack", "message.failed", "message.revoked",
     "message.reaction", "message.edited", "session.status", "session.qr", "session.authenticated",
     "session.disconnected", "session.reconnect_loop",
-    "group.join", "group.leave", "group.update", "call.received",
+    "group.join", "group.leave", "group.update", "call.received", "status.received",
     "*",
 ]
 
@@ -565,9 +565,7 @@ class StatusContact(TypedDict, total=False):
 # One status/story from the GET status endpoints (``list``/``from_contact``), which
 # answer a ``{"statuses": [...]}`` envelope. Mirrors the backend ``Status`` — the engine
 # payload is returned as-is, with no DTO in between. ``timestamp``/``expiresAt`` are
-# ISO 8601 strings (``Date`` on the server, serialized). ``mediaUrl``/``backgroundColor``/
-# ``font`` are declared by the backend but no engine populates them on a read yet
-# (whatsapp-web.js maps none of them; Baileys cannot read statuses at all).
+# ISO 8601 strings (``Date`` on the server, serialized).
 class StatusRecord(TypedDict, total=False):
     id: str
     contact: StatusContact

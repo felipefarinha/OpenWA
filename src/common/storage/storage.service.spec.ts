@@ -75,6 +75,22 @@ describe('StorageService (local) path traversal protection', () => {
     await expect(service.getFile('../secret.txt')).rejects.toThrow();
   });
 
+  it('deletes a file within the storage root', async () => {
+    await service.putFile('sub/gone.txt', Buffer.from('bye'));
+    await service.deleteFile('sub/gone.txt');
+    expect(fs.existsSync(path.join(localPath, 'sub/gone.txt'))).toBe(false);
+  });
+
+  it('deleting an already-missing file resolves without throwing', async () => {
+    await expect(service.deleteFile('never-existed.txt')).resolves.toBeUndefined();
+  });
+
+  it('rejects deleting a file outside the storage root', async () => {
+    fs.writeFileSync(path.join(baseDir, 'secret.txt'), 'topsecret');
+    await expect(service.deleteFile('../secret.txt')).rejects.toThrow();
+    expect(fs.existsSync(path.join(baseDir, 'secret.txt'))).toBe(true);
+  });
+
   it('imports safe entries but refuses tar entries that escape the storage root', async () => {
     const gz = await makeTarGz([
       { name: 'safe.txt', data: 'good' },

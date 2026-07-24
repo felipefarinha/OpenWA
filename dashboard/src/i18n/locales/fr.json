@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "Statut",
-      "placeholderDesc": "Les mises à jour de statut par contact arriveront dans une future mise à jour."
+      "placeholderDesc": "Les mises à jour de statut par contact arriveront dans une future mise à jour.",
+      "itemCount": "{{count}} mise à jour",
+      "itemCount_other": "{{count}} mises à jour",
+      "empty": "Aucun contact n'a de statut actif.",
+      "mediaUnavailable": "Média indisponible",
+      "compose": "Publier un statut",
+      "composeText": "Texte",
+      "composeImage": "Image",
+      "recipients": "Qui peut voir ceci",
+      "recipientsHint": "Baileys nécessite une liste de destinataires ; whatsapp-web.js utilise votre audience de confidentialité de statut.",
+      "noContacts": "Aucun contact trouvé",
+      "caption": "Légende",
+      "backgroundColor": "Couleur de fond",
+      "font": "Police",
+      "fontDefault": "Par défaut",
+      "orLabel": "ou",
+      "post": "Publier",
+      "posted": "Statut publié",
+      "postFailed": "Impossible de publier le statut"
     },
     "channels": {
       "notSupported": "Les chaînes ne sont pas prises en charge par le moteur Baileys.",

@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Delete, Param, Body } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, Res, StreamableFile } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { StatusService } from './status.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { SendTextStatusDto } from './dto/send-text-status.dto';
 import { SendImageStatusDto, SendVideoStatusDto } from './dto/send-media-status.dto';
 import { RequireRole } from '../auth/decorators/auth.decorators';
@@ -9,7 +11,10 @@ import { ApiKeyRole } from '../auth/entities/api-key.entity';
 @ApiTags('status')
 @Controller('sessions/:sessionId/status')
 export class StatusController {
-  constructor(private readonly statusService: StatusService) {}
+  constructor(
+    private readonly statusService: StatusService,
+    private readonly storageService: StorageService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all contact status updates' })
@@ -23,6 +28,23 @@ export class StatusController {
   @ApiResponse({ status: 200, description: 'Status updates from the requested contact.' })
   async getContactStatus(@Param('sessionId') sessionId: string, @Param('contactId') contactId: string) {
     return { statuses: await this.statusService.getContactStatus(sessionId, contactId) };
+  }
+
+  // Two path segments (`:statusId/media`) never collides with the single-segment `:contactId`
+  // route above regardless of declaration order — Nest/Express match on segment count.
+  @Get(':statusId/media')
+  @ApiOperation({ summary: 'Stream a stored status media file' })
+  @ApiResponse({ status: 200, description: 'The status image/video bytes.' })
+  @ApiResponse({ status: 404, description: 'No stored media (text status, omitted, or expired).' })
+  async getStatusMedia(
+    @Param('sessionId') sessionId: string,
+    @Param('statusId') statusId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { path, mimetype } = await this.statusService.getStatusMedia(sessionId, statusId);
+    const buffer = await this.storageService.getFile(path);
+    res.set({ 'Content-Type': mimetype });
+    return new StreamableFile(buffer);
   }
 
   @Post('send-text')

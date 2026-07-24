@@ -993,6 +993,7 @@ func TestWebhookEventWireValues(t *testing.T) {
 		EventGroupLeave:           "group.leave",
 		EventGroupUpdate:          "group.update",
 		EventCallReceived:         "call.received",
+		EventStatusReceived:       "status.received",
 		EventAll:                  "*",
 	}
 	for got, w := range want {

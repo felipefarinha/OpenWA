@@ -2403,6 +2403,16 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       };
       for (const msg of broadcast.msgs) {
         const ts = new Date(msg.timestamp * 1000);
+        // Reuse the same capped/limited/timeout-bounded inbound media download the live message path
+        // uses (capInboundMediaFor), so a seeded status renders identically to one that arrived live.
+        let media: IncomingMessage['media'];
+        if (msg.hasMedia) {
+          try {
+            media = await this.capInboundMediaFor(msg);
+          } catch (error) {
+            this.logger.warn(`Failed to download media for status ${msg.id._serialized}: ${String(error)}`);
+          }
+        }
         statuses.push({
           // `deleteStatus` takes this id as its revoke handle, so losing it to the rename makes a
           // listed status unactionable (#747). The contact id above is a Wid and is unaffected.
@@ -2410,6 +2420,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           contact: contactSummary,
           type: msg.type === MessageTypes.IMAGE ? 'image' : msg.type === MessageTypes.VIDEO ? 'video' : 'text',
           ...(msg.body ? { caption: msg.body } : {}),
+          ...(media ? { media } : {}),
           timestamp: ts,
           expiresAt: new Date(ts.getTime() + 24 * 3_600_000),
         });

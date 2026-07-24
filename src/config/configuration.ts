@@ -184,6 +184,16 @@ export default () => ({
     })(),
   },
 
+  // Status/Stories store configuration
+  status: {
+    // Per-file cap on status media persisted to disk/S3 (default 10 MiB). A status whose media exceeds
+    // this is stored omitted (mediaOmitted=true, omitReason='over_cap') rather than rejected outright.
+    mediaMaxBytes: (() => {
+      const n = parseInt(process.env.STATUS_MEDIA_MAX_BYTES ?? '', 10);
+      return Number.isFinite(n) && n > 0 ? n : 10 * 1024 * 1024;
+    })(),
+  },
+
   // Storage configuration
   storage: {
     type: process.env.STORAGE_TYPE || 'local',

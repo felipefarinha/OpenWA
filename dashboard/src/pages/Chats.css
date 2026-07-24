@@ -546,6 +546,15 @@
   white-space: pre-wrap;
 }
 
+/* Group sender label: the poster's name atop an incoming group bubble (colour set inline per sender). */
+.chats-page .message-sender {
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: 0.15rem;
+  word-break: break-word;
+}
+
 .chats-page .message-meta {
   display: flex;
   align-items: center;
@@ -1248,4 +1257,174 @@
   display: block;
   margin-bottom: 0.5rem;
   object-fit: cover;
+}
+
+/* Status viewer: shown in place of the image while a status media blob fails to load. */
+.chats-page .status-media-placeholder {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+/* =============================================================================
+   STATUS COMPOSE MODAL
+   ============================================================================= */
+.chats-page .status-compose-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.chats-page .status-compose-modal .compose-type-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.chats-page .status-compose-modal .compose-type-toggle button {
+  flex: 1;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: var(--bg-white);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-secondary);
+}
+
+.chats-page .status-compose-modal .compose-type-toggle button:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.chats-page .status-compose-modal .compose-type-toggle button.active {
+  background: var(--primary);
+  color: white;
+}
+
+.chats-page .status-compose-modal .compose-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-bottom: 1rem;
+}
+
+.chats-page .status-compose-modal .compose-field label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.chats-page .status-compose-modal textarea,
+.chats-page .status-compose-modal input[type='text'],
+.chats-page .status-compose-modal input[type='url'],
+.chats-page .status-compose-modal select {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--bg-light);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.chats-page .status-compose-modal textarea:focus,
+.chats-page .status-compose-modal input:focus,
+.chats-page .status-compose-modal select:focus {
+  border-color: var(--primary);
+  background: var(--bg-white);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.chats-page .status-compose-modal textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.chats-page .status-compose-modal .compose-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.chats-page .status-compose-modal .compose-row .compose-field {
+  flex: 1;
+}
+
+.chats-page .status-compose-modal input[type='color'] {
+  width: 100%;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--bg-light);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.chats-page .status-compose-modal input[type='file'] {
+  width: 100%;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.chats-page .status-compose-modal .compose-image-or {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+.chats-page .status-compose-modal .compose-recipients {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--bg-light);
+  margin-top: 0.5rem;
+}
+
+.chats-page .status-compose-modal .compose-recipient-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.chats-page .status-compose-modal .compose-recipient-row:last-child {
+  border-bottom: none;
+}
+
+.chats-page .status-compose-modal .compose-recipient-row:hover {
+  background: var(--bg-white);
+}
+
+.chats-page .status-compose-modal .compose-recipients-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chats-page .status-compose-modal .input-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.375rem;
 }

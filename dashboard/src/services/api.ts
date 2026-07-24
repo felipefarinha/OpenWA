@@ -178,6 +178,12 @@ export interface ChatMessage {
   chatId: string;
   /** Chat kind of the source conversation (present on live engine/WS payloads). */
   kind?: ChatKind;
+  /**
+   * Human-readable name of the message's sender. For a group this is the participant who posted
+   * (their pushName/contact name); the chat view uses it to label who said what, like WhatsApp. Null
+   * on legacy rows or when the engine could not resolve a name.
+   */
+  chatName?: string;
   from: string;
   to: string;
   body: string;
@@ -206,6 +212,10 @@ export interface EngineHistoryMessage {
   timestamp: number;
   fromMe?: boolean;
   media?: { mimetype: string; filename?: string; data?: string };
+  /** Sender in a group: `from` is the group JID, so this participant WID is the real poster. */
+  author?: string;
+  /** Best-effort sender contact (sync cache); its name labels the poster in a group thread. */
+  contact?: { id?: string; name?: string; pushName?: string };
 }
 
 // Mirrors the backend engine Channel / ChannelMessage (GET /sessions/:id/channels[/:id/messages]).
@@ -223,6 +233,34 @@ export interface ChannelMessage {
   timestamp: number;
   hasMedia: boolean;
   mediaUrl?: string;
+}
+
+// Mirrors the backend engine Status / IWhatsAppEngine status methods (GET /sessions/:id/status).
+export interface StatusUpdate {
+  id: string;
+  contact: { id: string; name?: string; pushName?: string };
+  type: 'text' | 'image' | 'video';
+  caption?: string;
+  mediaUrl?: string;
+  backgroundColor?: string;
+  font?: number;
+  timestamp: string;
+  expiresAt: string;
+}
+
+export interface ContactStatusGroup {
+  contact: { id: string; name?: string; pushName?: string };
+  items: StatusUpdate[];
+  latest: string;
+}
+
+// Minimal contact type for the recipient picker; the backend GET /sessions/:id/contacts
+// returns a Contact array; fields beyond id are optional.
+export interface Contact {
+  id: string;
+  name?: string;
+  pushName?: string;
+  number?: string;
 }
 
 export interface SendMediaPayload {
@@ -556,6 +594,39 @@ async function requestText(endpoint: string): Promise<string> {
   return response.text();
 }
 
+/** Like {@link request} but returns a Blob — e.g. for status media downloads. */
+async function requestBlob(endpoint: string): Promise<Blob> {
+  const url = `${API_BASE_URL}${endpoint}`;
+
+  // Get API key from sessionStorage for authentication
+  const apiKey = sessionStorage.getItem('openwa_api_key');
+
+  const headers: HeadersInit = {
+    ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+  };
+
+  const response = await fetch(url, { headers });
+
+  if (response.status === 401) {
+    // The stored API key is invalid/expired/revoked — clear it and return to login
+    sessionStorage.removeItem('openwa_api_key');
+    if (typeof window !== 'undefined') {
+      window.location.assign('/');
+      // Halt this request's promise chain so callers neither throw nor receive an undefined payload.
+      return new Promise<Blob>(() => {});
+    }
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    const err = new Error(error.message || `HTTP ${response.status}`) as Error & { status?: number };
+    err.status = response.status;
+    throw err;
+  }
+
+  return response.blob();
+}
+
 // =============================================================================
 // Session API
 // =============================================================================
@@ -609,6 +680,24 @@ export const sessionApi = {
   getSubscribedChannels: (id: string) => request<Channel[]>(`/sessions/${id}/channels`),
   getChannelMessages: (id: string, channelId: string, limit = 50) =>
     request<ChannelMessage[]>(`/sessions/${id}/channels/${encodeURIComponent(channelId)}/messages?limit=${limit}`),
+  getContactStatuses: (id: string) => request<{ statuses: StatusUpdate[] }>(`/sessions/${id}/status`),
+  getStatusMediaBlob: (id: string, statusId: string) =>
+    requestBlob(`/sessions/${id}/status/${encodeURIComponent(statusId)}/media`),
+  postTextStatus: (id: string, text: string, recipients: string[], extra?: { backgroundColor?: string; font?: number }) =>
+    request(`/sessions/${id}/status/send-text`, {
+      method: 'POST',
+      body: JSON.stringify({ text, recipients, ...extra }),
+    }),
+  postImageStatus: (
+    id: string,
+    image: { url?: string; base64?: string; mimetype?: string },
+    recipients: string[],
+    caption?: string,
+  ) =>
+    request(`/sessions/${id}/status/send-image`, {
+      method: 'POST',
+      body: JSON.stringify({ image, recipients, caption }),
+    }),
 };
 
 // =============================================================================
@@ -675,6 +764,7 @@ export interface ProfilePictureResponse {
 }
 
 export const contactApi = {
+  list: (sessionId: string) => request<Contact[]>(`/sessions/${sessionId}/contacts`),
   checkNumber: (sessionId: string, number: string) =>
     request<CheckNumberResponse>(`/sessions/${sessionId}/contacts/check/${encodeURIComponent(number)}`),
   // Returns the contact/group profile picture URL. Both engines return null when the user hid their

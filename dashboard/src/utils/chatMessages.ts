@@ -15,6 +15,7 @@ export function mapEngineHistoryMessage(h: EngineHistoryMessage): ChatMessage {
     id: h.id,
     waMessageId: h.id,
     chatId: h.chatId,
+    chatName: h.contact?.pushName ?? h.contact?.name,
     from: h.from,
     to: h.to,
     body: h.body ?? '',

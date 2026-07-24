@@ -10,7 +10,7 @@ import {
   withSafeFetch,
 } from './ssrf-guard';
 import * as dnsPromises from 'dns/promises';
-import { fetch as undiciFetch } from 'undici';
+import { fetch as undiciFetch, Agent } from 'undici';
 
 // Default to the real resolver (so the localhost/real-DNS cases below behave normally); individual
 // tests override a single call with mockResolvedValueOnce to simulate a specific resolution.
@@ -382,11 +382,48 @@ describe('withSafeFetch (guarded + pinned fetch)', () => {
     });
     const use = jest.fn();
 
-    await expect(withSafeFetch('https://example.com/hook', {}, use, { guard: true })).rejects.toThrow(
-      SsrfBlockedError,
-    );
+    await expect(withSafeFetch('https://example.com/hook', {}, use, { guard: true })).rejects.toThrow(SsrfBlockedError);
     expect(use).not.toHaveBeenCalled();
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows a rejection from the unread-body cancel so teardown never throws (#887)', async () => {
+    // cancel() itself can reject (the very "terminated" error we cancel to avoid). Swallowing it keeps
+    // teardown from turning a delivery into a crash.
+    const cancel = jest.fn().mockRejectedValue(new Error('terminated'));
+    (dnsPromises.lookup as jest.Mock).mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+    (undiciFetch as jest.Mock).mockResolvedValue({ status: 200, type: 'basic', bodyUsed: false, body: { cancel } });
+
+    await expect(withSafeFetch('https://example.com/hook', {}, () => 'ok', { guard: true })).resolves.toBe('ok');
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows a rejection from the dispatcher teardown on the pinned path', async () => {
+    const destroy = jest.spyOn(Agent.prototype, 'destroy').mockRejectedValue(new Error('destroy failed'));
+    try {
+      (dnsPromises.lookup as jest.Mock).mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+      (undiciFetch as jest.Mock).mockResolvedValue({ status: 200, type: 'basic', bodyUsed: true, body: {} });
+
+      await expect(withSafeFetch('https://example.com/hook', {}, () => 'ok', { guard: true })).resolves.toBe('ok');
+      expect(destroy).toHaveBeenCalled();
+    } finally {
+      destroy.mockRestore();
+    }
+  });
+
+  it('swallows a rejection from the dispatcher teardown on the redirect-following path', async () => {
+    const destroy = jest.spyOn(Agent.prototype, 'destroy').mockRejectedValue(new Error('destroy failed'));
+    try {
+      (dnsPromises.lookup as jest.Mock).mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+      (undiciFetch as jest.Mock).mockResolvedValue({ status: 200, type: 'basic', bodyUsed: true, body: {} });
+
+      await expect(
+        withSafeFetch('https://github.com/x/releases/download/v1/p.zip', {}, () => 'ok', { followRedirects: true }),
+      ).resolves.toBe('ok');
+      expect(destroy).toHaveBeenCalled();
+    } finally {
+      destroy.mockRestore();
+    }
   });
 });
 

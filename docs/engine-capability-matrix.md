@@ -76,7 +76,8 @@ The `rootCause`/`evidence` fields are hand-curated from source traces of the ins
 | `getContactStatuses` | not-available — **library-limitation** | supported |
 
 > **Wired.** ✅ `getContactStatus` / `getContactStatuses` on whatsapp-web.js — `getBroadcastById(id)` / `getBroadcasts()` flattened to `Status[]` (contact via `broadcast.getContact()`; type from `MessageTypes`; 24h TTL). **Caveat:** `Status.type` is the `text|image|video` union — audio/other story types collapse to `text`.
-- **`getContactStatus` / `getContactStatuses` (baileys, library-limitation).** `fetchStatus` (`Socket/chats.d.ts:42` via `USyncStatusProtocol`) returns the *about/profile text* line (`{status, setAt}`), **not** 24h stories. No story-read getter exists; story broadcasts surface only as `status@broadcast` messages via `messages.upsert` / `messaging-history.set` events. Would require OpenWA to accumulate `status@broadcast` messages itself and project them into `Status[]`.
+- **`getContactStatus` / `getContactStatuses` (baileys, library-limitation).** `fetchStatus` (`Socket/chats.d.ts:42` via `USyncStatusProtocol`) returns the *about/profile text* line (`{status, setAt}`), **not** 24h stories. No story-read getter exists; story broadcasts surface only as `status@broadcast` messages via `messages.upsert` / `messaging-history.set` events. These raw engine methods are still unimplemented on Baileys and still throw `EngineNotSupportedError` (`501`) if called directly.
+- **API-level parity shipped without adapter wiring.** The `status@broadcast` accumulator this row calls for exists now — as an OpenWA-side store (`StatusStoreService`, `src/modules/status-store/`) fed by inbound status ingestion on both engines, not inside the Baileys adapter. `GET /sessions/:id/status` and `GET /sessions/:id/status/:contactId` read from that store instead of calling `getContactStatus`/`getContactStatuses`, so the REST API is at parity across engines even though these two adapter cells remain, correctly, `not-available`.
 
 ### Messaging misc — delete / history / reactions
 
@@ -134,7 +135,7 @@ These are honestly out of reach of a clean adapter wiring because the installed 
 - `getLabels` / `getLabelById` / `getChatLabels` — no label read symbol; only writes (`Types/Label.d.ts` is types-only). Workaround: capture labels from the `messaging-history.set` app-state event into an in-memory cache (relay hack, no on-demand refresh).
 - `getChatHistory` — only `fetchMessageHistory` (event-delivered sync token); no synchronous per-chat `fetchMessages`. Needs an OpenWA-side chat-indexed store fed from `messages.upsert` + `messaging-history.set`.
 - `getMessageReactions` — no on-demand fetch; reactions only arrive via the `messages.reaction` event. Partial local path: persist each event into the `messageStore`, then read (no historical backfill).
-- `getContactStatus` / `getContactStatuses` — `fetchStatus` returns the *about* text, not 24h stories; stories only surface as `status@broadcast` messages. Needs an OpenWA-side story accumulator.
+- `getContactStatus` / `getContactStatuses` — `fetchStatus` returns the *about* text, not 24h stories; stories only surface as `status@broadcast` messages. The engine-level Baileys adapter methods remain unimplemented (`501`); however, the REST API reads are served from the `StatusStoreService` accumulator (see §Status — read above), so API-level parity is shipped.
 - `sendCatalog` — no catalog-share message type in `AnyMessageContent` (only single `{product}`).
 
 **wwjs (6 cells):**

@@ -255,6 +255,8 @@ export interface Status {
   type: 'text' | 'image' | 'video';
   caption?: string;
   mediaUrl?: string;
+  /** Downloaded media bytes for an image/video status, when the engine fetched them (see `capInboundMediaFor`). */
+  media?: IncomingMessage['media'];
   backgroundColor?: string;
   font?: number;
   timestamp: Date;

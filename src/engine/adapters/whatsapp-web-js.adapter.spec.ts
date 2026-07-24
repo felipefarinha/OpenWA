@@ -209,6 +209,7 @@ describe('loadRemoteMedia — routes through the SSRF-pinned media fetch', () =>
           cancel: () => Promise.resolve(),
         };
       },
+      cancel: () => Promise.resolve(),
     },
   });
 
@@ -1277,6 +1278,37 @@ describe('WhatsAppWebJsAdapter status methods', () => {
     ]);
     const result = await readyAdapter({ sendMessage: jest.fn(), getBroadcasts }).getContactStatuses();
     expect(result).toHaveLength(2); // only the populated broadcast maps
+  });
+
+  it('getContactStatuses downloads media for a media status via the shared inbound cap helper', async () => {
+    const downloadMedia = jest.fn().mockResolvedValue({ mimetype: 'image/png', data: 'QUJD' });
+    const mediaBroadcast = {
+      getContact: () => Promise.resolve({ id: { _serialized: '628222@c.us' }, name: 'Bob' }),
+      msgs: [
+        {
+          id: { _serialized: 'ST3' },
+          type: 'image',
+          body: 'seeded pic',
+          timestamp: 1700000030,
+          hasMedia: true,
+          _data: { mimetype: 'image/png', size: 3 },
+          downloadMedia,
+        },
+      ],
+    };
+    const getBroadcasts = jest.fn().mockResolvedValue([mediaBroadcast]);
+    const result = await readyAdapter({ sendMessage: jest.fn(), getBroadcasts }).getContactStatuses();
+    expect(downloadMedia).toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0].media).toEqual(expect.objectContaining({ mimetype: 'image/png', data: 'QUJD' }));
+  });
+
+  it('getContactStatuses does not attempt a media download for a text status (hasMedia false)', async () => {
+    // storyBroadcast msgs carry no hasMedia flag, matching a real text/chat story.
+    const getBroadcasts = jest.fn().mockResolvedValue([storyBroadcast]);
+    const result = await readyAdapter({ sendMessage: jest.fn(), getBroadcasts }).getContactStatuses();
+    expect(result[0].media).toBeUndefined();
+    expect(result[1].media).toBeUndefined();
   });
 });
 

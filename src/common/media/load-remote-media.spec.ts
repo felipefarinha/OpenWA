@@ -30,6 +30,7 @@ describe('loadRemoteMediaBuffer', () => {
           cancel: () => Promise.resolve(),
         };
       },
+      cancel: () => Promise.resolve(),
     },
   });
 

@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "狀態",
-      "placeholderDesc": "個別聯絡人的狀態更新將於日後更新中推出。"
+      "placeholderDesc": "個別聯絡人的狀態更新將於日後更新中推出。",
+      "itemCount": "{{count}} 則更新",
+      "itemCount_other": "{{count}} 則更新",
+      "empty": "沒有聯絡人有活躍的狀態。",
+      "mediaUnavailable": "媒體無法使用",
+      "compose": "發佈狀態",
+      "composeText": "文字",
+      "composeImage": "圖片",
+      "recipients": "誰可以看到這個",
+      "recipientsHint": "Baileys 需要收件人清單；whatsapp-web.js 使用你的狀態隱私對象。",
+      "noContacts": "找不到聯絡人",
+      "caption": "說明文字",
+      "backgroundColor": "背景顏色",
+      "font": "字型",
+      "fontDefault": "預設",
+      "orLabel": "或",
+      "post": "發佈",
+      "posted": "狀態已發佈",
+      "postFailed": "無法發佈狀態"
     },
     "channels": {
       "notSupported": "Baileys 引擎不支援頻道。",

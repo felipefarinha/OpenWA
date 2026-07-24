@@ -5,11 +5,12 @@ import { Message } from '../message/entities/message.entity';
 import { SessionService } from './session.service';
 import { SessionController } from './session.controller';
 import { WebhookModule } from '../webhook/webhook.module';
+import { StatusStoreModule } from '../status-store/status-store.module';
 
 @Module({
-  // WebhookModule does not import SessionModule back, so the dependency is one-directional —
-  // no forwardRef() needed.
-  imports: [TypeOrmModule.forFeature([Session, Message], 'data'), WebhookModule],
+  // WebhookModule/StatusStoreModule do not import SessionModule back, so the dependency is
+  // one-directional — no forwardRef() needed.
+  imports: [TypeOrmModule.forFeature([Session, Message], 'data'), WebhookModule, StatusStoreModule],
   controllers: [SessionController],
   providers: [SessionService],
   exports: [SessionService],
