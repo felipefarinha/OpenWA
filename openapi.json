@@ -7541,10 +7541,18 @@
           },
           "font": {
             "type": "number",
-            "description": "Font family index (0–5).",
+            "description": "Font family index from the WhatsApp status font enum: 0 (default), 1, 2, 6 (bold), 7, 8, 9, or 10. whatsapp-web.js honors only 0–7 and clamps anything above to the default.",
             "example": 0,
-            "minimum": 0,
-            "maximum": 5
+            "enum": [
+              0,
+              1,
+              2,
+              6,
+              7,
+              8,
+              9,
+              10
+            ]
           },
           "recipients": {
             "description": "Recipient JIDs (0–256). WhatsApp Status is not posted to a group — use @c.us or @lid individuals. Required on the Baileys engine (it posts to exactly this allow-list); ignored by whatsapp-web.js, which broadcasts to the account's status-privacy audience — omit it there.",

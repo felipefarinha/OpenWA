@@ -145,7 +145,10 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
     }
 
     row.mediaOmitted = true;
-    row.omitReason = media.omitted ? 'engine_omitted' : 'over_cap';
+    // A blob the engine skipped precisely because the caller tightened the cap below it (the status
+    // seed's pre-gate) is over the STORE's cap — keep the reason truthful on both arrival paths.
+    row.omitReason =
+      sizeBytes !== undefined && sizeBytes > maxBytes ? 'over_cap' : media.omitted ? 'engine_omitted' : 'over_cap';
   }
 
   // Reads exclude already-expired rows: WhatsApp hides a status the moment its 24h are up, but the
@@ -166,6 +169,10 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
     if (this.lidMappingStore) {
       const phone = userPart(contactJid);
       candidates.add(`${phone}@c.us`);
+      // Forward-resolve a @lid query to its phone too, or rows ingested after the mapping was
+      // learned (stored under @c.us) are missed by a consumer querying the raw lid.
+      const resolved = this.lidMappingStore.getCached(phone);
+      if (resolved) candidates.add(`${resolved}@c.us`);
       for (const lid of this.lidMappingStore.lidsForPhone(phone)) candidates.add(`${lid}@lid`);
     }
     const rows = await this.repository.find({
@@ -178,9 +185,12 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
   /**
    * Canonical display form of a contact JID: resolve a @lid to its phone via the shared mapping.
    * Read-time (not ingest-time) on purpose: a mapping learned after the status arrived still merges
-   * the contact's rows into one group. Unknown or known-unresolved lids stay as-is.
+   * the contact's rows into one group. Only @lid inputs go through the map — its keys are raw digit
+   * strings, so resolving a phone-shaped JID could collide with an unrelated lid. Unknown or
+   * known-unresolved lids stay as-is.
    */
   private canonicalContactJid(jid: string): string {
+    if (!jid.endsWith('@lid')) return jid;
     const phone = this.lidMappingStore?.getCached(userPart(jid));
     return phone ? `${phone}@c.us` : jid;
   }

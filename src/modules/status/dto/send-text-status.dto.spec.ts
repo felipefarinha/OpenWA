@@ -3,6 +3,24 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { SendTextStatusDto } from './send-text-status.dto';
 
+describe('SendTextStatusDto font validation (WhatsApp font enum)', () => {
+  const withFont = (font: unknown) => ({ text: 'hi', font });
+
+  it('accepts every value in the wire enum (0, 1, 2, 6–10)', async () => {
+    for (const font of [0, 1, 2, 6, 7, 8, 9, 10]) {
+      const errors = await validate(plainToInstance(SendTextStatusDto, withFont(font)));
+      expect(errors).toHaveLength(0);
+    }
+  });
+
+  it('rejects values outside the wire enum (3–5 no longer exist on it, 11+, negatives)', async () => {
+    for (const font of [3, 4, 5, 11, -1]) {
+      const errors = await validate(plainToInstance(SendTextStatusDto, withFont(font)));
+      expect(errors.some(e => e.property === 'font')).toBe(true);
+    }
+  });
+});
+
 describe('SendTextStatusDto recipients validation', () => {
   const valid = { text: 'hi', recipients: ['6281@c.us'] };
 

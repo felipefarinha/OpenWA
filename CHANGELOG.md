@@ -20,7 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tab refreshes immediately instead of waiting for a focus refetch — including while a contact's
   viewer is already open.
 
+### Changed
+
+- **Status font selection now follows the real WhatsApp font enum.** `POST
+  /sessions/:id/status/send-text` accepts the font indices that actually exist on the wire — 0
+  (default), 1, 2, 6 (system bold), 7, 8, 9, 10 — instead of a 0–5 range that included
+  non-existent indices 3–5 and rejected the valid 6–10. The dashboard viewer renders the full
+  enum (bold/script/serif/mono slots approximated with generic families), and the compose
+  dropdown offers the same set.
+
 ### Fixed
+
+- **Backup restores no longer drop group sender attribution.** The data import now carries the
+  `author` column (the export already wrote it), so a backup→restore keeps each group message's
+  stable sender identity instead of collapsing attribution back to display names.
 
 - **Group messages now carry a stable sender identity, so same-named participants no longer blur
   together.** Group messages persist the participant JID (new `author` column on `messages`) next
@@ -37,6 +50,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The status seed no longer downloads media the store would discard.** Media downloads during the
   connect-time backfill are pre-gated at the store's own 10 MB cap instead of the looser global
   media cap, so an over-cap blob is marked omitted without ever being fetched.
+
+- **Status store hardening.** A `@lid` query on the per-contact status endpoint now also matches
+  rows stored under the contact's phone (forward resolution, mirroring the reverse); lid
+  resolution is guarded to `@lid` inputs so a phone-shaped JID can never collide with a lid key;
+  media skipped by the seed's download pre-gate is recorded as `over_cap` rather than
+  `engine_omitted`; and a status ingest that finishes after its session was deleted no longer
+  dispatches `status.received` for the retired session.
+
+- **History backfill no longer marks the account's own posts.** Backfilled outgoing group messages
+  are stored with `author` NULL, keeping the column's "null on outgoing" contract the attribution
+  logic relies on.
+
+- **Dashboard follow-through.** A websocket reconnect now also refreshes the statuses list (a
+  story posted during the gap previously stayed invisible until a window-focus refetch); the
+  webhook editor offers `status.received` as an explicit subscription; and a styled status
+  bubble's timestamp inherits the bubble's text color instead of staying muted gray.
 
 ## [0.10.9] - 2026-07-24
 

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, Min, Max, Matches, MaxLength, IsArray, ArrayMaxSize } from 'class-validator';
+import { IsString, IsOptional, IsInt, IsIn, Matches, MaxLength, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ToStrictNumber } from '../../../common/utils/strict-boolean';
 
@@ -14,12 +14,17 @@ export class SendTextStatusDto {
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'backgroundColor must be a hex color (e.g., #25D366)' })
   backgroundColor?: string;
 
-  @ApiPropertyOptional({ description: 'Font family index (0–5).', example: 0, minimum: 0, maximum: 5 })
+  @ApiPropertyOptional({
+    description:
+      'Font family index from the WhatsApp status font enum: 0 (default), 1, 2, 6 (bold), 7, 8, 9, ' +
+      'or 10. whatsapp-web.js honors only 0–7 and clamps anything above to the default.',
+    example: 0,
+    enum: [0, 1, 2, 6, 7, 8, 9, 10],
+  })
   @ToStrictNumber()
   @IsOptional()
   @IsInt()
-  @Min(0)
-  @Max(5)
+  @IsIn([0, 1, 2, 6, 7, 8, 9, 10])
   font?: number;
 
   @ApiPropertyOptional({
