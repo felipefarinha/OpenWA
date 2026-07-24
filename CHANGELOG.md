@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`npm run dev` no longer crashes on the second launch with `Cannot find module '.../dist/main'`.**
+  The TypeScript 6 upgrade moved the incremental build cache (`tsbuildinfo`) out of `dist/` to the
+  project root, where the dev server's `deleteOutDir` wipe could no longer remove it. On every start
+  after the first, the compiler trusted the stale cache, emitted no JavaScript at all, and the
+  freshly spawned `node dist/main` crashed with `MODULE_NOT_FOUND` (#891). The cache is pinned back
+  inside `dist/` so it is wiped together with the build output, restoring a full emit on every start.
+  Thanks @Magnarks.
+
 - **Outbound `withSafeFetch` no longer crashes the process on unread webhook response bodies.**
   Status-only callers (queued webhook delivery, webhook test, deprecated direct delivery) left the
   undici response body unread; when the peer reset the TLS socket — or the per-request dispatcher
