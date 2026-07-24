@@ -100,6 +100,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   select; and picking an image file then immediately switching to a URL no longer lets the
   late-arriving file bytes override the URL.
 
+- **Status tab: clearer errors, a fresher viewer, and picker fixes.** A failed statuses fetch now
+  shows an explicit error instead of looking like "no active statuses". The open status viewer
+  stays in sync when statuses refetch — newly arrived items appear without re-opening the contact,
+  and a contact whose statuses have all expired closes cleanly. The compose recipient search now
+  matches name, pushName, number, or JID, and selection is capped at 256 like the backend instead
+  of failing on submit. Contacts known only by their pushName now show it in the list and viewer
+  instead of a raw JID. The locales drop two dead keys, and Arabic, Hebrew, and Telugu get proper
+  plural forms for the status item count.
+
 ## [0.10.8] - 2026-07-23
 
 ### Added
