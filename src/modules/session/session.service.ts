@@ -803,6 +803,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
             sessionId: id,
             waMessageId: m.id,
             chatId: m.chatId,
+            author: m.author,
             from: m.from,
             to: m.to,
             body: m.body,
@@ -1049,6 +1050,9 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
               waMessageId: incoming.id || undefined,
               chatId: incoming.chatId,
               chatName,
+              // Group poster (participant JID) — `from` is the group JID, so this is the stable
+              // sender identity the chat view keys attribution runs/colors on. Undefined for 1:1.
+              author: incoming.author,
               from: incoming.from,
               to: incoming.to,
               body: incoming.body,

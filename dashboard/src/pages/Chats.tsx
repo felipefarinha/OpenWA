@@ -43,6 +43,7 @@ import {
   mergeDeliveryStatus,
   mergeOrAppend,
   findRevokedIndex,
+  senderKey,
   type ChatMessageView,
 } from '../utils/chatMessages';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -566,6 +567,7 @@ export function Chats() {
         // For a group post `from` is the group JID, so the sender's name is carried on `contact`.
         // Persisted rows keep the same value in `chatName`; normalize both to one field for the thread.
         chatName: newMsg.contact?.pushName ?? newMsg.contact?.name,
+        author: newMsg.author,
         from: newMsg.from,
         to: newMsg.to,
         body: newMsg.body,
@@ -1536,7 +1538,9 @@ export function Chats() {
                         activeChat?.isGroup &&
                           !isMe &&
                           msg.chatName &&
-                          (!prev || prev.direction === 'outgoing' || prev.chatName !== msg.chatName),
+                          // Key the run on the stable sender id (participant JID), not the display
+                          // name — two participants who share a pushName must still start a new run.
+                          (!prev || prev.direction === 'outgoing' || senderKey(prev) !== senderKey(msg)),
                       );
 
                       const isMediaMessage = msg.type !== 'text';
@@ -1654,8 +1658,11 @@ export function Chats() {
                               } ${isRevoked ? 'revoked-type' : ''}`}
                             >
                               {/* Group sender label (WhatsApp-style: coloured name atop the bubble) */}
+                              {/* Group sender label (WhatsApp-style: coloured name atop the bubble).
+                                  Colour keys on the stable sender id, so same-named participants
+                                  still get distinct colours; the label shows the human name. */}
                               {showSender && (
-                                <div className="message-sender" style={{ color: senderColor(msg.chatName!) }}>
+                                <div className="message-sender" style={{ color: senderColor(senderKey(msg)!) }}>
                                   {msg.chatName}
                                 </div>
                               )}

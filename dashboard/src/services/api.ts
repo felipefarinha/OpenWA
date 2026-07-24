@@ -184,6 +184,12 @@ export interface ChatMessage {
    * on legacy rows or when the engine could not resolve a name.
    */
   chatName?: string;
+  /**
+   * Stable sender identity for a group message: the participant JID who actually posted (`from` is
+   * the group JID). Present on live/engine payloads and on rows persisted after the column was
+   * added; absent on 1:1 messages, outgoing echoes, and legacy rows.
+   */
+  author?: string;
   from: string;
   to: string;
   body: string;

@@ -95,6 +95,7 @@ import {
   removeMessageById,
   findRevokedIndex,
   applyMessageEdit,
+  senderKey,
   type ChatMessageView,
 } from './chatMessages.ts';
 
@@ -281,4 +282,40 @@ test('applyMessageEdit is a referential no-op for an empty or unknown target id'
   const before = [msg({ id: 'm-1', body: 'old' })];
   assert.equal(applyMessageEdit(before, { messageId: '', body: 'new' }), before);
   assert.equal(applyMessageEdit(before, { messageId: 'missing', body: 'new' }), before);
+});
+
+test('mapEngineHistoryMessage: carries the group participant JID as author', () => {
+  const m = mapEngineHistoryMessage(hist({ author: '628111@c.us' }));
+  assert.equal(m.author, '628111@c.us');
+});
+
+test('mergeChatMessages: salvages author from the engine copy when the DB row predates the column', () => {
+  // A legacy DB row (no stable sender id) merged over an engine-history copy that has one must not
+  // lose it — that id is what keeps same-named participants in separate attribution runs.
+  const history = [mapEngineHistoryMessage(hist({ id: 'WA_S1', author: '628111@c.us' }))];
+  const rows = [db({ waMessageId: 'WA_S1', author: undefined })];
+  const merged = mergeChatMessages(rows, history);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].author, '628111@c.us');
+  // …while the rest of the winning DB row (authoritative status) is untouched.
+  assert.equal(merged[0].status, 'delivered');
+});
+
+test('mergeChatMessages: a DB-persisted author wins over the engine copy', () => {
+  const history = [mapEngineHistoryMessage(hist({ id: 'WA_S2', author: '628111@c.us' }))];
+  const rows = [db({ waMessageId: 'WA_S2', author: '628222@c.us' })];
+  assert.equal(mergeChatMessages(rows, history)[0].author, '628222@c.us');
+});
+
+test('mergeOrAppend: an author-less echo keeps the cached author', () => {
+  const list = [msg({ id: 'WA_E1', waMessageId: 'WA_E1', author: '628111@c.us' })];
+  const echo = msg({ id: 'WA_E1', waMessageId: 'WA_E1', author: undefined, body: 'echo' });
+  const out = mergeOrAppend(list, echo);
+  assert.equal(out[0].author, '628111@c.us');
+});
+
+test('senderKey prefers the participant JID and falls back to the display name', () => {
+  assert.equal(senderKey({ author: '628111@c.us', chatName: 'Alice' }), '628111@c.us');
+  assert.equal(senderKey({ chatName: 'Alice' }), 'Alice');
+  assert.equal(senderKey({}), undefined);
 });
