@@ -7,6 +7,7 @@ import { StatusUpdate } from './entities/status-update.entity';
 import type { IncomingStatus } from './incoming-status';
 import type { Status } from '../../engine/interfaces/whatsapp-engine.interface';
 import { StorageService } from '../../common/storage/storage.service';
+import { isUniqueConstraintError } from '../../common/utils/unique-constraint.util';
 import { createLogger } from '../../common/services/logger.service';
 
 /** A status/story lives for 24h from posting, matching WhatsApp's own expiry. Exported for the
@@ -86,19 +87,21 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
       return { row: await this.repository.save(row), created: true };
     } catch (error) {
       // The unique (sessionId, waStatusId) index is the idempotency backstop for a concurrent ingest
-      // of the same status racing past the findOne check above; the loser re-reads and returns the
-      // row the winner just inserted instead of surfacing a constraint violation to the caller.
+      // of the same status racing past the findOne check above; on a unique-constraint violation the
+      // loser re-reads and returns the row the winner just inserted instead of surfacing the
+      // constraint error to the caller. Any OTHER save error is a genuine persistence failure and
+      // must propagate — never be masked by a coincidentally matching row.
       const winner = await this.repository.findOne({ where: { sessionId, waStatusId: s.waStatusId } });
       // This call's row was never saved, so the file attachMedia wrote for it (its own random key)
       // is referenced by no row, and purgeExpired — which only sweeps expired rows' files — could
-      // never reap it. Delete it here or a lost race leaks one orphan per race. The guard skips the
-      // pathological case where the re-read row is this very insert (driver errored on a commit
-      // that landed): there the file IS the persisted row's media. deleteFile treats an
+      // never reap it. Delete it here or a failed ingest leaks one orphan per failure. The guard
+      // skips the pathological case where the re-read row is this very insert (driver errored on a
+      // commit that landed): there the file IS the persisted row's media. deleteFile treats an
       // already-missing file as success.
       if (row.mediaPath && row.mediaPath !== winner?.mediaPath) {
         await this.storageService.deleteFile(row.mediaPath).catch(() => undefined);
       }
-      if (winner) return { row: winner, created: false };
+      if (winner && isUniqueConstraintError(error)) return { row: winner, created: false };
       throw error;
     }
   }

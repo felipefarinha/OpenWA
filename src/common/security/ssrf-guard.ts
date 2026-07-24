@@ -387,7 +387,13 @@ export function validatingLookup(): LookupFunction {
  * bodies (`bodyUsed`) are left alone so streaming readers (media / plugin downloads) are unaffected.
  */
 async function settleUnreadResponseBody(response: Response): Promise<void> {
-  if (response.bodyUsed || !response.body) return;
+  // bodyUsed only covers *disturbed* streams. A stream the caller locked with getReader() but never
+  // read from is not disturbed, and cancel() on a locked stream rejects — such callers must cancel
+  // their own reader on error paths, so locked streams are left to them.
+  if (response.bodyUsed || !response.body || response.body.locked) return;
+  // Guard the call itself: a duck-typed response (e.g. a test mock without cancel) must not throw
+  // synchronously from a `finally` and mask the original error.
+  if (typeof response.body.cancel !== 'function') return;
   await response.body.cancel().catch(() => undefined);
 }
 

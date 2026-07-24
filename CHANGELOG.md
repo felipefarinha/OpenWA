@@ -69,6 +69,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   blocked until the engine type has loaded, so a Baileys post can no longer go out without
   recipients.
 
+- **A failed status ingest only resolves idempotently on a genuine unique-constraint violation.**
+  Previously any save error coinciding with an already-persisted row was swallowed into returning
+  that row; other persistence failures (e.g. a locked database) now propagate to the caller.
+
+- **The production Docker image no longer ships the TypeScript build cache.** The incremental
+  `tsbuildinfo` pinned inside `dist/` (needed so the dev server's `deleteOutDir` wipes it with the
+  output) is deleted at the end of the builder stage instead of being copied into every published
+  image.
+
 - **`npm run dev` no longer crashes on the second launch with `Cannot find module '.../dist/main'`.**
   The TypeScript 6 upgrade moved the incremental build cache (`tsbuildinfo`) out of `dist/` to the
   project root, where the dev server's `deleteOutDir` wipe could no longer remove it. On every start

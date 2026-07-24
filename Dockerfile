@@ -40,7 +40,10 @@ COPY . .
 # deps - install them explicitly here (npm ci, reproducible from dashboard/package-lock.json).
 # `--include=dev` for the same reason as above: the dashboard build needs vite/typescript
 # (devDependencies), which a NODE_ENV=production build env would otherwise omit.
-RUN npm run build && npm run dashboard:ci -- --include=dev && npm run dashboard:build
+# Drop the incremental-build cache afterwards: it is pinned inside dist/ (so nest's deleteOutDir
+# wipes it with the output), and the production stage copies dist/ wholesale — it would otherwise
+# ship dead compiler metadata in every image.
+RUN npm run build && npm run dashboard:ci -- --include=dev && npm run dashboard:build && rm -f dist/*.tsbuildinfo
 
 # ===== Stage 2: Production =====
 FROM docker.io/node:22-slim AS production

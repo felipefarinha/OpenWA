@@ -398,6 +398,48 @@ describe('withSafeFetch (guarded + pinned fetch)', () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
+  it('cancels the unread body BEFORE destroying the dispatcher — the ordering is the fix (#887)', async () => {
+    // A refactor swapping the two `finally` steps would re-open the crash path while keeping every
+    // call-count assertion green; pin the order explicitly.
+    const cancel = jest.fn().mockResolvedValue(undefined);
+    const destroy = jest.spyOn(Agent.prototype, 'destroy').mockResolvedValue(undefined);
+    try {
+      (dnsPromises.lookup as jest.Mock).mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+      (undiciFetch as jest.Mock).mockResolvedValue({ status: 200, type: 'basic', bodyUsed: false, body: { cancel } });
+
+      await withSafeFetch('https://example.com/hook', {}, () => 'ok', { guard: true });
+
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(destroy.mock.invocationCallOrder[0]);
+    } finally {
+      destroy.mockRestore();
+    }
+  });
+
+  it('leaves a locked body stream to its reader (cancel on a locked stream would reject)', async () => {
+    // A caller that acquired a reader but never read has bodyUsed === false yet a locked stream;
+    // the settle must skip it — cancelling someone else's locked stream is not safe.
+    const cancel = jest.fn().mockResolvedValue(undefined);
+    (dnsPromises.lookup as jest.Mock).mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+    (undiciFetch as jest.Mock).mockResolvedValue({
+      status: 200,
+      type: 'basic',
+      bodyUsed: false,
+      body: { cancel, locked: true },
+    });
+
+    await withSafeFetch('https://example.com/hook', {}, () => 'ok', { guard: true });
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('tolerates a duck-typed body without a cancel method instead of throwing from the finally', async () => {
+    (dnsPromises.lookup as jest.Mock).mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+    (undiciFetch as jest.Mock).mockResolvedValue({ status: 200, type: 'basic', bodyUsed: false, body: {} });
+
+    await expect(withSafeFetch('https://example.com/hook', {}, () => 'ok', { guard: true })).resolves.toBe('ok');
+  });
+
   it('swallows a rejection from the dispatcher teardown on the pinned path', async () => {
     const destroy = jest.spyOn(Agent.prototype, 'destroy').mockRejectedValue(new Error('destroy failed'));
     try {
