@@ -365,7 +365,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
    * on the sender-declared size and skip the download entirely when it exceeds the cap, and (2) run the
    * download through the concurrency limiter for backpressure. Returns undefined when there's no media.
    */
-  private async capInboundMediaFor(msg: Message): Promise<IncomingMessage['media'] | undefined> {
+  private async capInboundMediaFor(
+    msg: Message,
+    maxBytesOverride?: number,
+  ): Promise<IncomingMessage['media'] | undefined> {
     if (!isMediaDownloadEnabled()) {
       const data = (msg as unknown as { _data?: { size?: number; mimetype?: string; filename?: string } })._data;
       return {
@@ -375,13 +378,14 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         sizeBytes: coerceDeclaredSize(data?.size),
       };
     }
-    const maxBytes = inboundMediaMaxBytes();
+    const maxBytes = maxBytesOverride ?? inboundMediaMaxBytes();
     const data = (msg as unknown as { _data?: { size?: number; mimetype?: string; filename?: string } })._data;
     const declared = coerceDeclaredSize(data?.size);
     if (declared > maxBytes) {
-      this.logger.warn('Inbound media declared size exceeds MEDIA_DOWNLOAD_MAX_BYTES; skipped download', {
+      this.logger.warn('Inbound media declared size exceeds the cap; skipped download', {
         msgId: msg.id._serialized,
         sizeBytes: declared,
+        maxBytes,
       });
       return {
         mimetype: data?.mimetype ?? '',
@@ -2111,7 +2115,12 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   // ========== Gap Quick Wins Implementation ==========
 
-  async getChatHistory(chatId: string, limit: number = 50, includeMedia: boolean = false): Promise<IncomingMessage[]> {
+  async getChatHistory(
+    chatId: string,
+    limit: number = 50,
+    includeMedia: boolean = false,
+    mediaMaxBytes?: number,
+  ): Promise<IncomingMessage[]> {
     this.ensureReady();
     const chat = await this.client!.getChatById(chatId);
     const messages = await chat.fetchMessages({ limit });
@@ -2150,8 +2159,9 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       }
       if (includeMedia && msg.hasMedia) {
         try {
-          // Same pre-gate + limiter as live media: a large historical blob shouldn't bloat the response/heap.
-          const capped = await this.capInboundMediaFor(msg);
+          // Same pre-gate + limiter as live media: a large historical blob shouldn't bloat the
+          // response/heap. Callers (the status seed) can tighten the cap below the global default.
+          const capped = await this.capInboundMediaFor(msg, mediaMaxBytes);
           if (capped) out.media = capped;
         } catch (error) {
           this.logger.warn(`Failed to download media for ${msg.id._serialized}: ${String(error)}`);

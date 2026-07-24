@@ -1,13 +1,15 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { LessThan, MoreThan, Repository } from 'typeorm';
+import { In, LessThan, MoreThan, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { StatusUpdate } from './entities/status-update.entity';
 import type { IncomingStatus } from './incoming-status';
 import type { Status } from '../../engine/interfaces/whatsapp-engine.interface';
 import { StorageService } from '../../common/storage/storage.service';
 import { isUniqueConstraintError } from '../../common/utils/unique-constraint.util';
+import { LidMappingStoreService } from '../../engine/identity/lid-mapping-store.service';
+import { userPart } from '../../engine/identity/wa-id';
 import { createLogger } from '../../common/services/logger.service';
 
 /** A status/story lives for 24h from posting, matching WhatsApp's own expiry. Exported for the
@@ -15,7 +17,9 @@ import { createLogger } from '../../common/services/logger.service';
 export const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
 /** How often the TTL purge sweeps expired rows. */
 const PURGE_INTERVAL_MS = 15 * 60 * 1000;
-const DEFAULT_MEDIA_MAX_BYTES = 10 * 1024 * 1024;
+/** Default per-file cap on persisted status media. Exported for the session service's seed, which
+ * pre-gates history downloads at the same cap so over-cap blobs are never fetched. */
+export const DEFAULT_MEDIA_MAX_BYTES = 10 * 1024 * 1024;
 
 /** Subtypes whose registered mimetype name differs from the conventional file extension. */
 const MIME_SUBTYPE_EXT_OVERRIDES: Record<string, string> = { jpeg: 'jpg', quicktime: 'mov' };
@@ -42,6 +46,9 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
     private readonly repository: Repository<StatusUpdate>,
     private readonly storageService: StorageService,
     private readonly configService: ConfigService,
+    // Optional, mirroring WebhookService: resolution is a best-effort display concern — without the
+    // store, contacts just show under whichever JID the status arrived with.
+    @Optional() private readonly lidMappingStore?: LidMappingStoreService,
   ) {}
 
   onModuleInit(): void {
@@ -153,17 +160,35 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
   }
 
   async listByContact(sessionId: string, contactJid: string): Promise<Status[]> {
+    // The same person may hold rows under both a @lid and their @c.us (the mapping was learned
+    // mid-window) — match every candidate so a resolved-form query doesn't silently miss lid rows.
+    const candidates = new Set<string>([contactJid]);
+    if (this.lidMappingStore) {
+      const phone = userPart(contactJid);
+      candidates.add(`${phone}@c.us`);
+      for (const lid of this.lidMappingStore.lidsForPhone(phone)) candidates.add(`${lid}@lid`);
+    }
     const rows = await this.repository.find({
-      where: { sessionId, contactJid, expiresAt: MoreThan(Date.now()) },
+      where: { sessionId, contactJid: In([...candidates]), expiresAt: MoreThan(Date.now()) },
       order: { postedAt: 'DESC' },
     });
     return rows.map(row => this.toStatus(row));
   }
 
+  /**
+   * Canonical display form of a contact JID: resolve a @lid to its phone via the shared mapping.
+   * Read-time (not ingest-time) on purpose: a mapping learned after the status arrived still merges
+   * the contact's rows into one group. Unknown or known-unresolved lids stay as-is.
+   */
+  private canonicalContactJid(jid: string): string {
+    const phone = this.lidMappingStore?.getCached(userPart(jid));
+    return phone ? `${phone}@c.us` : jid;
+  }
+
   private toStatus(row: StatusUpdate): Status {
     return {
       id: row.waStatusId,
-      contact: { id: row.contactJid, name: row.contactName, pushName: row.contactPushName },
+      contact: { id: this.canonicalContactJid(row.contactJid), name: row.contactName, pushName: row.contactPushName },
       type: row.type,
       caption: row.caption,
       mediaUrl:

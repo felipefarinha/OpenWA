@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 jest.mock('archiver', () => ({ default: jest.fn() }));
 
 import { StorageService } from '../../common/storage/storage.service';
+import { LidMappingStoreService } from '../../engine/identity/lid-mapping-store.service';
 import { StatusUpdate } from './entities/status-update.entity';
 import { StatusStoreService } from './status-store.service';
 
@@ -327,6 +328,65 @@ describe('StatusStoreService ingest race (unique-constraint loser)', () => {
     ).rejects.toThrow('database is locked');
 
     expect(mediaDir()).toEqual(['winner.jpg']);
+  });
+});
+
+describe('StatusStoreService contact identity (read-time lid resolution)', () => {
+  let baseDir: string;
+  let ds: DataSource;
+  let repository: Repository<StatusUpdate>;
+  let storageService: StorageService;
+
+  beforeEach(async () => {
+    baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'owa-status-lid-'));
+    ds = new DataSource({ type: 'better-sqlite3', database: ':memory:', entities: [StatusUpdate], synchronize: true });
+    await ds.initialize();
+    repository = ds.getRepository(StatusUpdate);
+    storageService = makeStorageService(path.join(baseDir, 'media'));
+  });
+
+  afterEach(async () => {
+    if (ds.isInitialized) await ds.destroy();
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  const lidStore = (mappings: Record<string, string | null>): LidMappingStoreService =>
+    ({
+      getCached: (lid: string) => (lid in mappings ? mappings[lid] : undefined),
+      lidsForPhone: (phone: string) =>
+        Object.entries(mappings)
+          .filter(([, p]) => p === phone)
+          .map(([l]) => l),
+    }) as unknown as LidMappingStoreService;
+
+  it('resolves a @lid contact to the mapped phone at read time, so both forms group together', async () => {
+    const svc = new StatusStoreService(repository, storageService, fakeConfigService(), lidStore({ '111': '628111' }));
+    const now = Date.now();
+    await svc.ingest('sess', { waStatusId: 'l1', contactJid: '111@lid', type: 'text', postedAt: now });
+    await svc.ingest('sess', { waStatusId: 'l2', contactJid: '628111@c.us', type: 'text', postedAt: now + 1 });
+
+    const contacts = new Set((await svc.list('sess')).map(s => s.contact.id));
+    expect(contacts).toEqual(new Set(['628111@c.us']));
+  });
+
+  it('leaves unknown and known-unresolved lids untouched', async () => {
+    const svc = new StatusStoreService(repository, storageService, fakeConfigService(), lidStore({ '222': null }));
+    const now = Date.now();
+    await svc.ingest('sess', { waStatusId: 'u1', contactJid: '222@lid', type: 'text', postedAt: now });
+    await svc.ingest('sess', { waStatusId: 'u2', contactJid: '333@lid', type: 'text', postedAt: now + 1 });
+
+    const contacts = (await svc.list('sess')).map(s => s.contact.id);
+    expect(contacts).toContain('222@lid');
+    expect(contacts).toContain('333@lid');
+  });
+
+  it("listByContact matches rows stored under the contact's lid when queried by phone", async () => {
+    const svc = new StatusStoreService(repository, storageService, fakeConfigService(), lidStore({ '111': '628111' }));
+    await svc.ingest('sess', { waStatusId: 'l3', contactJid: '111@lid', type: 'text', postedAt: Date.now() });
+
+    const out = await svc.listByContact('sess', '628111@c.us');
+    expect(out).toHaveLength(1);
+    expect(out[0].contact.id).toBe('628111@c.us');
   });
 });
 

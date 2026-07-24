@@ -617,7 +617,17 @@ export interface IWhatsAppEngine {
    * non-text or foreign messages at their own layer — the engine's error is surfaced as-is.
    */
   editMessage(chatId: string, messageId: string, body: string): Promise<MessageResult>;
-  getChatHistory(chatId: string, limit?: number, includeMedia?: boolean): Promise<IncomingMessage[]>;
+  /**
+   * Read a chat's recent messages, newest first. When `includeMedia` downloads blobs, an optional
+   * `mediaMaxBytes` tightens the declared-size pre-gate below the global MEDIA_DOWNLOAD_MAX_BYTES —
+   * the status seed uses it to skip downloads the store would discard as over-cap anyway.
+   */
+  getChatHistory(
+    chatId: string,
+    limit?: number,
+    includeMedia?: boolean,
+    mediaMaxBytes?: number,
+  ): Promise<IncomingMessage[]>;
 
   // Calls
   /**
