@@ -28,7 +28,7 @@ import { userPart } from '../../engine/identity/wa-id';
 import { paginate, ListOptions, resolveListWindow } from '../../common/utils/paginate';
 import { isUniqueConstraintError } from '../../common/utils/unique-constraint.util';
 import { resolveFeatureFlags } from '../../config/feature-flags';
-import { STATUS_TTL_MS, StatusStoreService } from '../status-store/status-store.service';
+import { DEFAULT_MEDIA_MAX_BYTES, STATUS_TTL_MS, StatusStoreService } from '../status-store/status-store.service';
 import { buildIncomingStatus } from '../status-store/incoming-status';
 import type { StatusUpdate } from '../status-store/entities/status-update.entity';
 import {
@@ -672,7 +672,11 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
       // through the very buildIncomingStatus the live onMessage path uses — so a seeded status is
       // indistinguishable from one that arrives live. No status.received webhook is dispatched here:
       // this is a backfill of posts that predate the connection, not a live arrival.
-      const messages = await engine.getChatHistory('status@broadcast', STATUS_SEED_LIMIT, true);
+      // Pre-gate media downloads at the store's own cap: a larger blob would be discarded as
+      // over_cap on ingest anyway, so downloading it is pure waste (heap + bandwidth).
+      const mediaMaxBytes =
+        this.configService?.get<number>('status.mediaMaxBytes', DEFAULT_MEDIA_MAX_BYTES) ?? DEFAULT_MEDIA_MAX_BYTES;
+      const messages = await engine.getChatHistory('status@broadcast', STATUS_SEED_LIMIT, true, mediaMaxBytes);
       // getChatHistory maps a message's contact from the sync cache only, so status posters (usually
       // @lid ids) come back nameless. Resolve each unique poster once via getContactById — the same
       // lookup the contacts API uses, which maps the @lid to the real contact — so a seeded status

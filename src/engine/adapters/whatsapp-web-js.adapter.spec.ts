@@ -377,6 +377,31 @@ describe('WhatsAppWebJsAdapter.getChatHistory enrichment (parity with the live p
     expect(out[0].kind).toBe('group');
     expect(out[0].isGroup).toBe(true);
   });
+
+  it('skips the media download when the declared size exceeds a caller-tightened mediaMaxBytes', async () => {
+    // 12 MB passes the global 50 MiB default but not the seed's 10 MB store cap — proving the
+    // override (not the default) did the gating, and the blob is never downloaded.
+    const mediaMsg = {
+      id: { _serialized: 'M5' },
+      from: '621@c.us',
+      to: 'status@broadcast',
+      body: '',
+      type: 'image',
+      timestamp: 500,
+      fromMe: false,
+      hasMedia: true,
+      hasQuotedMsg: false,
+      _data: { size: 12 * 1024 * 1024, mimetype: 'image/jpeg' },
+      downloadMedia: jest.fn(),
+    };
+    const chat = { fetchMessages: jest.fn().mockResolvedValue([mediaMsg]) };
+    const client = { getChatById: jest.fn().mockResolvedValue(chat) };
+
+    const out = await readyAdapter(client).getChatHistory('status@broadcast', 50, true, 10 * 1024 * 1024);
+
+    expect(mediaMsg.downloadMedia).not.toHaveBeenCalled();
+    expect(out[0].media).toMatchObject({ omitted: true, sizeBytes: 12 * 1024 * 1024, mimetype: 'image/jpeg' });
+  });
 });
 
 describe('WhatsAppWebJsAdapter.sendPollMessage', () => {

@@ -1045,7 +1045,12 @@ export class BaileysAdapter implements IWhatsAppEngine {
   getMessageReactions(_chatId: string, _messageId: string): Promise<MessageReaction[]> {
     return this.unsupported('getMessageReactions');
   }
-  getChatHistory(_chatId: string, _limit?: number, _includeMedia?: boolean): Promise<IncomingMessage[]> {
+  getChatHistory(
+    _chatId: string,
+    _limit?: number,
+    _includeMedia?: boolean,
+    _mediaMaxBytes?: number,
+  ): Promise<IncomingMessage[]> {
     return this.unsupported('getChatHistory');
   }
   getLabels(): Promise<Label[]> {

@@ -2689,8 +2689,9 @@ describe('SessionService', () => {
       await flush();
 
       // Reads the status-broadcast chat's own messages (with media), not the near-empty-at-ready
-      // getBroadcasts collection.
-      expect(mockEngine.getChatHistory).toHaveBeenCalledWith('status@broadcast', 50, true);
+      // getBroadcasts collection. Downloads are pre-gated at the store's 10 MB cap, not the looser
+      // global MEDIA_DOWNLOAD_MAX_BYTES — anything bigger would be discarded as over_cap on ingest.
+      expect(mockEngine.getChatHistory).toHaveBeenCalledWith('status@broadcast', 50, true, 10 * 1024 * 1024);
       expect(mockEngine.getContactStatuses).not.toHaveBeenCalled();
       // Two usable statuses ingested; the pseudo-JID poster is filtered out.
       expect(statusStore.ingest).toHaveBeenCalledTimes(2);
