@@ -105,6 +105,7 @@ const availableEventNames = [
   'group.leave',
   'group.update',
   'call.received',
+  'status.received',
   '*',
 ] as const;
 

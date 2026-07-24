@@ -302,6 +302,8 @@ interface MessageRow {
   waMessageId: string | null;
   chatId: string;
   chatName: string | null;
+  /** Group participant JID (nullable; added to messages after chatName — keep the import list in sync). */
+  author: string | null;
   from: string;
   to: string;
   body: string | null;
@@ -1390,14 +1392,17 @@ export class InfraController {
         for (const msg of data.tables.messages) {
           try {
             await insert(
-              `INSERT INTO messages (id, "sessionId", "waMessageId", "chatId", "chatName", "from", "to", body, type, direction, "timestamp", metadata, status, "createdAt")
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+              `INSERT INTO messages (id, "sessionId", "waMessageId", "chatId", "chatName", author, "from", "to", body, type, direction, "timestamp", metadata, status, "createdAt")
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
               [
                 msg.id,
                 msg.sessionId,
                 msg.waMessageId ?? null,
                 msg.chatId,
                 msg.chatName ?? null,
+                // Rows exported before the author column existed simply restore to NULL (legacy
+                // behavior) instead of failing the whole import on an unknown key.
+                msg.author ?? null,
                 msg.from,
                 msg.to,
                 msg.body ?? null,

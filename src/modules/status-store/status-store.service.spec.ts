@@ -118,6 +118,20 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
     expect(row.mediaPath).toBeFalsy();
   });
 
+  it('ingest records over_cap (not engine_omitted) when an engine-skipped blob exceeds the store cap', async () => {
+    // The seed's pre-gate skips downloads above the store cap with the engine-omitted flag set —
+    // the durable reason must still read over_cap on both arrival paths.
+    const { row } = await service.ingest('sess', {
+      waStatusId: 'w8',
+      contactJid: '628111@c.us',
+      type: 'image',
+      media: { mimetype: 'image/jpeg', omitted: true, sizeBytes: 11 * 1024 * 1024 },
+      postedAt: Date.now(),
+    });
+    expect(row.mediaOmitted).toBe(true);
+    expect(row.omitReason).toBe('over_cap');
+  });
+
   it('ingest is idempotent on (sessionId, waStatusId), flagged as not created on the duplicate', async () => {
     await service.ingest('sess', { waStatusId: 'dup', contactJid: '628111@c.us', type: 'text', postedAt: 1 });
     const second = await service.ingest('sess', {
@@ -404,6 +418,29 @@ describe('StatusStoreService contact identity (read-time lid resolution)', () =>
 
     const out = await svc.listByContact('sess', '628111@c.us');
     expect(out).toHaveLength(1);
+    expect(out[0].contact.id).toBe('628111@c.us');
+  });
+
+  it("listByContact forward-resolves a lid query to rows stored under the contact's phone", async () => {
+    const svc = new StatusStoreService(repository, storageService, fakeConfigService(), lidStore({ '111': '628111' }));
+    await svc.ingest('sess', { waStatusId: 'l4', contactJid: '628111@c.us', type: 'text', postedAt: Date.now() });
+
+    const out = await svc.listByContact('sess', '111@lid');
+    expect(out).toHaveLength(1);
+    expect(out[0].contact.id).toBe('628111@c.us');
+  });
+
+  it('never resolves phone-shaped JIDs through the lid map (digit-collision guard)', async () => {
+    // A lid key colliding with a phone's digits must not rename a phone-form row.
+    const svc = new StatusStoreService(
+      repository,
+      storageService,
+      fakeConfigService(),
+      lidStore({ '628111': '628999' }),
+    );
+    await svc.ingest('sess', { waStatusId: 'l5', contactJid: '628111@c.us', type: 'text', postedAt: Date.now() });
+
+    const out = await svc.list('sess');
     expect(out[0].contact.id).toBe('628111@c.us');
   });
 });

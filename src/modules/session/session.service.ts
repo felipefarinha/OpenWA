@@ -810,7 +810,9 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
             sessionId: id,
             waMessageId: m.id,
             chatId: m.chatId,
-            author: m.author,
+            // Group poster for inbound rows only — the account's own backfilled group messages must
+            // not carry author (the column's contract is "null on outgoing echoes").
+            author: m.fromMe ? undefined : m.author,
             from: m.from,
             to: m.to,
             body: m.body,
@@ -964,6 +966,9 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
               // for a duplicate delivery (or the winner's row after a lost insert race), and the
               // webhook must fire once per status, not once per (re)delivery.
               .then(({ row, created }) => {
+                // The ingest awaited; a stop()/delete() can retire this engine mid-flight — don't
+                // dispatch for a session that no longer exists (mirrors message.received's re-check).
+                if (!this.isLiveEngine(id, engine)) return;
                 if (created) this.dispatchStatusReceived(id, row);
               })
               .catch(err =>

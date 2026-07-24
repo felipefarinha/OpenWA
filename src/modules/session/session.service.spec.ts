@@ -2292,6 +2292,35 @@ describe('SessionService', () => {
       );
     });
 
+    it('does not dispatch when the session is deleted mid-ingest', async () => {
+      // ingest() awaits (findOne + media write + save); a delete() completing in that window must
+      // stop the continuation before it webhooks/emits for a retired session — mirroring the
+      // message.received re-check above.
+      const callbacks = await startAndCaptureCallbacks();
+      const engines = (service as unknown as { engines: Map<string, unknown> }).engines;
+      (statusStore.ingest as jest.Mock).mockImplementationOnce(() => {
+        engines.delete('sess-uuid-1');
+        return Promise.resolve({ created: true, row: { waStatusId: 'st1', contactJid: '628111@c.us' } });
+      });
+
+      callbacks.onMessage!(
+        makeMessage({
+          id: 'st1',
+          from: 'status@broadcast',
+          to: 'me@c.us',
+          chatId: 'status@broadcast',
+          fromMe: false,
+          isStatusBroadcast: true,
+          author: '628111@c.us',
+          kind: 'status',
+        }),
+      );
+      await flush();
+
+      expect(dispatchedEvents('status.received')).toHaveLength(0);
+      expect(eventsGateway.emitStatusReceived).not.toHaveBeenCalled();
+    });
+
     it('does not dispatch status.received for a duplicate delivery (ingest resolves created=false)', async () => {
       const callbacks = await startAndCaptureCallbacks();
       (statusStore.ingest as jest.Mock).mockResolvedValueOnce({
@@ -3012,6 +3041,41 @@ describe('SessionService', () => {
         expect(qb.orIgnore).toHaveBeenCalled();
         expect(execute).toHaveBeenCalled();
         expect(messageRepository.save).not.toHaveBeenCalled(); // no longer the throwing path
+      });
+
+      it('persists author only for inbound history rows, never for the account’s own (fromMe) posts', async () => {
+        // The Baileys history sync includes the account's own group messages (with author = self);
+        // those must land with author NULL to keep the column's "null on outgoing" contract.
+        const callbacks = await startAndCaptureCallbacks();
+        const created: Array<Record<string, unknown>> = [];
+        (messageRepository.create as jest.Mock).mockImplementation((data: Record<string, unknown>) => {
+          created.push(data);
+          return { ...data };
+        });
+        (messageRepository.find as jest.Mock).mockResolvedValue([]); // nothing pre-seen
+
+        const histMsg = (over: Partial<IncomingMessage>): IncomingMessage => ({
+          id: 'h-x',
+          from: '120363@g.us',
+          to: 'me@c.us',
+          chatId: '120363@g.us',
+          body: 'g',
+          type: 'text',
+          timestamp: 1,
+          fromMe: false,
+          isGroup: true,
+          kind: 'group',
+          ...over,
+        });
+        callbacks.onHistoryMessages?.([
+          histMsg({ id: 'h-in', fromMe: false, author: '628111@c.us' }),
+          histMsg({ id: 'h-out', fromMe: true, author: '628999@c.us' }),
+        ]);
+        await flush();
+
+        const byId = new Map(created.map(r => [r.waMessageId as string, r]));
+        expect(byId.get('h-in')?.author).toBe('628111@c.us');
+        expect(byId.get('h-out')?.author).toBeUndefined();
       });
 
       it('synthesizes the omitted media marker for media-free history rows (no empty bubbles)', async () => {

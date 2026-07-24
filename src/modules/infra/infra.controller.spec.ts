@@ -836,6 +836,37 @@ describe('InfraController.import/export preserves every data-DB table', () => {
     expect((await lidRepo.findOneByOrFail({ lid: '222' })).phone).toBeNull();
   });
 
+  // The messages import column list must carry every later-added column; `author` (the group
+  // sender identity) was the one that drifted — a restored backup silently lost all attribution.
+  it('restores the group-sender author column on a backup→restore', async () => {
+    await seedSession('s1');
+    const msgRepo = ds.getRepository(Message);
+    await msgRepo.save(
+      msgRepo.create({
+        sessionId: 's1',
+        waMessageId: 'WA-A1',
+        chatId: '120363@g.us',
+        chatName: 'Alice',
+        author: '628111@c.us',
+        from: '120363@g.us',
+        to: 'me@c.us',
+        body: 'hello',
+        type: 'text',
+        direction: MessageDirection.INCOMING,
+        status: MessageStatus.DELIVERED,
+        timestamp: 1700000000,
+      }),
+    );
+
+    const dump = await controller.exportData();
+    await msgRepo.clear();
+    const res = await controller.importData({ tables: dump.tables });
+
+    expect(res.warnings).toEqual([]);
+    const restored = await msgRepo.findOneByOrFail({ waMessageId: 'WA-A1' });
+    expect(restored.author).toBe('628111@c.us');
+  });
+
   // DELETE FROM sessions cascades to templates + baileys_stored_messages (both FK ON DELETE CASCADE),
   // so an import that never re-inserts them permanently wipes both on the documented backup flow.
   it('restores templates and baileys_stored_messages instead of cascade-wiping them', async () => {

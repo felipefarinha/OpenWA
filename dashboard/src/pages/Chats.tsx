@@ -188,14 +188,32 @@ function StatusMedia({
 // user can't build a list the backend is guaranteed to reject.
 const STATUS_RECIPIENTS_MAX = 256;
 
-// Approximate WhatsApp's text-status font slots with generic families (the actual faces are
-// proprietary); index 0 and unknown slots keep the UI default.
-const STATUS_FONT_FAMILY: Record<number, string> = {
-  1: 'serif',
-  2: 'monospace',
-  3: 'cursive',
-  4: 'fantasy',
-  5: 'ui-rounded, system-ui, sans-serif',
+// WhatsApp's text-status font slots — the current wire enum is {0,1,2,6,7,8,9,10} (6 is the bold
+// system face); 3–5 are legacy slots older clients still emit. Approximated with generic
+// families/weights since the actual faces are proprietary; slot 0 and unknown slots keep the UI
+// default.
+const STATUS_FONT: Record<number, { family?: string; weight?: number }> = {
+  1: { family: 'serif' },
+  2: { family: 'cursive' },
+  3: { family: 'fantasy' }, // legacy
+  4: { family: 'serif' }, // legacy
+  5: { family: 'ui-rounded, system-ui, sans-serif' }, // legacy
+  6: { weight: 700 },
+  7: { family: 'cursive' },
+  8: { family: 'serif' },
+  9: { family: 'sans-serif', weight: 800 },
+  10: { family: 'monospace', weight: 700 },
+};
+
+/** Inline style for a status item's font slot; {} when unstyled/unknown. */
+const statusFontStyle = (font?: number): { fontFamily?: string; fontWeight?: number } => {
+  if (font === undefined) return {};
+  const slot = STATUS_FONT[font];
+  if (!slot) return {};
+  return {
+    ...(slot.family ? { fontFamily: slot.family } : {}),
+    ...(slot.weight ? { fontWeight: slot.weight } : {}),
+  };
 };
 
 export function Chats() {
@@ -783,6 +801,9 @@ export function Chats() {
     reconnectWasDisconnected.current = decision.wasDisconnected;
     if (decision.invalidate) {
       queryClient.invalidateQueries({ queryKey: ['messages', selectedSessionId] });
+      // Statuses are live now (status.received): a story posted during the socket gap would
+      // otherwise stay invisible until a focus refetch.
+      queryClient.invalidateQueries({ queryKey: ['contact-statuses', selectedSessionId] });
     }
   }, [isConnected, selectedSessionId, queryClient]);
 
@@ -1961,9 +1982,7 @@ export function Chats() {
                               ...(item.backgroundColor
                                 ? { backgroundColor: item.backgroundColor, color: '#fff' }
                                 : {}),
-                              ...(item.font && STATUS_FONT_FAMILY[item.font]
-                                ? { fontFamily: STATUS_FONT_FAMILY[item.font] }
-                                : {}),
+                              ...statusFontStyle(item.font),
                             }
                           : undefined
                       }
@@ -2056,7 +2075,9 @@ export function Chats() {
                   <label>{t('chats.status.font')}</label>
                   <select value={composeFont} onChange={e => setComposeFont(e.target.value)}>
                     <option value="">{t('chats.status.fontDefault')}</option>
-                    {[0, 1, 2, 3, 4, 5].map(f => (
+                    {/* The WhatsApp status font enum: 6 is the bold system face; 3–5 don't exist on
+                        the wire and the backend rejects them. */}
+                    {[0, 1, 2, 6, 7, 8, 9, 10].map(f => (
                       <option key={f} value={f}>
                         {f}
                       </option>

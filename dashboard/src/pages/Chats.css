@@ -568,6 +568,13 @@
   color: var(--text-muted);
 }
 
+/* A styled status bubble sets its own inline background + white text; let its timestamp inherit
+   instead of staying the muted gray meant for the default bubble. */
+.chats-page .message-bubble[style] .message-time {
+  color: inherit;
+  opacity: 0.75;
+}
+
 .chats-page .message-status-icon {
   font-size: 0.75rem;
 }
