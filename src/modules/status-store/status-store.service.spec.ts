@@ -273,7 +273,7 @@ describe('StatusStoreService ingest race (unique-constraint loser)', () => {
     expect(mediaDir()).toHaveLength(0);
   });
 
-  it('keeps the file when the re-read row is this very insert (driver errored on a commit that landed)', async () => {
+  it('keeps the file but still rethrows when the re-read row is this very insert (driver errored on a commit that landed)', async () => {
     const repo = {
       findOne: jest
         .fn()
@@ -288,15 +288,45 @@ describe('StatusStoreService ingest race (unique-constraint loser)', () => {
     } as unknown as Repository<StatusUpdate>;
     const service = new StatusStoreService(repo, storageService, fakeConfigService());
 
-    await service.ingest('sess', {
-      waStatusId: 'raced',
-      contactJid: '628111@c.us',
-      type: 'image',
-      media: { mimetype: 'image/jpeg', data: Buffer.from('self').toString('base64') },
-      postedAt: 1000,
-    });
+    // Not a unique-constraint error, so the failure surfaces even though a row exists — but the
+    // file is kept: the re-read row IS this insert, so its media is still referenced.
+    await expect(
+      service.ingest('sess', {
+        waStatusId: 'raced',
+        contactJid: '628111@c.us',
+        type: 'image',
+        media: { mimetype: 'image/jpeg', data: Buffer.from('self').toString('base64') },
+        postedAt: 1000,
+      }),
+    ).rejects.toThrow('driver reported failure after commit');
 
     expect(mediaDir()).toHaveLength(1);
+  });
+
+  it('rethrows a non-unique save error even when a coincidental winner row exists', async () => {
+    fs.mkdirSync(path.join(baseDir, 'media', 'statuses', 'sess'), { recursive: true });
+    fs.writeFileSync(path.join(baseDir, 'media', 'statuses', 'sess', 'winner.jpg'), 'winner');
+    const winner = new StatusUpdate();
+    winner.mediaPath = 'statuses/sess/winner.jpg';
+    const repo = {
+      findOne: jest.fn().mockResolvedValueOnce(null).mockResolvedValue(winner),
+      save: jest.fn().mockRejectedValue(new Error('database is locked')),
+    } as unknown as Repository<StatusUpdate>;
+    const service = new StatusStoreService(repo, storageService, fakeConfigService());
+
+    // A genuine persistence failure must not be swallowed into an idempotent return just because
+    // a matching row happens to exist — and this call's own file is still reaped.
+    await expect(
+      service.ingest('sess', {
+        waStatusId: 'raced',
+        contactJid: '628111@c.us',
+        type: 'image',
+        media: { mimetype: 'image/jpeg', data: Buffer.from('loser').toString('base64') },
+        postedAt: 1000,
+      }),
+    ).rejects.toThrow('database is locked');
+
+    expect(mediaDir()).toEqual(['winner.jpg']);
   });
 });
 
