@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "상태",
-      "placeholderDesc": "연락처별 상태 업데이트는 향후 업데이트에서 제공될 예정입니다."
+      "placeholderDesc": "연락처별 상태 업데이트는 향후 업데이트에서 제공될 예정입니다.",
+      "itemCount": "업데이트 {{count}}개",
+      "itemCount_other": "업데이트 {{count}}개",
+      "empty": "활성 상태가 있는 연락처가 없습니다.",
+      "mediaUnavailable": "미디어를 사용할 수 없음",
+      "compose": "상태 게시",
+      "composeText": "텍스트",
+      "composeImage": "이미지",
+      "recipients": "볼 수 있는 사람",
+      "recipientsHint": "Baileys는 수신자 목록이 필요합니다. whatsapp-web.js는 상태 공개 범위를 사용합니다.",
+      "noContacts": "연락처를 찾을 수 없습니다",
+      "caption": "캡션",
+      "backgroundColor": "배경색",
+      "font": "글꼴",
+      "fontDefault": "기본값",
+      "orLabel": "또는",
+      "post": "게시",
+      "posted": "상태가 게시되었습니다",
+      "postFailed": "상태를 게시할 수 없습니다"
     },
     "channels": {
       "notSupported": "Baileys 엔진에서는 채널을 지원하지 않습니다.",

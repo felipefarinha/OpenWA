@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "状态",
-      "placeholderDesc": "单个联系人的状态更新将在未来版本中推出。"
+      "placeholderDesc": "单个联系人的状态更新将在未来版本中推出。",
+      "itemCount": "{{count}} 条更新",
+      "itemCount_other": "{{count}} 条更新",
+      "empty": "没有联系人有活跃的状态。",
+      "mediaUnavailable": "媒体不可用",
+      "compose": "发布状态",
+      "composeText": "文字",
+      "composeImage": "图片",
+      "recipients": "谁可以看到",
+      "recipientsHint": "Baileys 需要收件人列表；whatsapp-web.js 使用您的状态隐私受众。",
+      "noContacts": "未找到联系人",
+      "caption": "说明文字",
+      "backgroundColor": "背景颜色",
+      "font": "字体",
+      "fontDefault": "默认",
+      "orLabel": "或",
+      "post": "发布",
+      "posted": "状态已发布",
+      "postFailed": "无法发布状态"
     },
     "channels": {
       "notSupported": "Baileys 引擎不支持频道。",

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { SessionService } from '../session/session.service';
+import { StatusStoreService } from '../status-store/status-store.service';
 import type { Status, StatusResult, StatusPostOptions } from '../../engine/interfaces/whatsapp-engine.interface';
 import { assertBase64WithinMediaCap, stripBase64DataUri } from '../message/media-cap.util';
 import { HookManager, applySendingGate } from '../../core/hooks';
@@ -10,6 +11,7 @@ export class StatusService {
   constructor(
     private readonly sessionService: SessionService,
     private readonly hookManager: HookManager,
+    private readonly store: StatusStoreService,
   ) {}
 
   /**
@@ -40,20 +42,24 @@ export class StatusService {
     return { mimetype: media.mimetype, data };
   }
 
+  // Reads come from the store (StatusStoreService ingests status broadcasts as they arrive, plus a
+  // best-effort seed on connect), not the engine — Baileys never implemented
+  // `getContactStatuses`/`getContactStatus`, so both engines now answer reads identically from the
+  // same 24h-TTL store.
   async getStatuses(sessionId: string): Promise<Status[]> {
-    const engine = this.sessionService.getEngine(sessionId);
-    if (!engine) {
-      throw new NotFoundException(`Session ${sessionId} not found or not connected`);
-    }
-    return engine.getContactStatuses();
+    return this.store.list(sessionId);
   }
 
   async getContactStatus(sessionId: string, contactId: string): Promise<Status[]> {
-    const engine = this.sessionService.getEngine(sessionId);
-    if (!engine) {
-      throw new NotFoundException(`Session ${sessionId} not found or not connected`);
+    return this.store.listByContact(sessionId, contactId);
+  }
+
+  async getStatusMedia(sessionId: string, statusId: string): Promise<{ path: string; mimetype: string }> {
+    const media = await this.store.getMedia(sessionId, statusId);
+    if (!media) {
+      throw new NotFoundException('Status media not found or expired');
     }
-    return engine.getContactStatus(contactId);
+    return media;
   }
 
   async postTextStatus(sessionId: string, text: string, options: StatusPostOptions): Promise<StatusResult> {

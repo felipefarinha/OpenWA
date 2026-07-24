@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "స్థితి",
-      "placeholderDesc": "Per-contact status updates arrive in a future update."
+      "placeholderDesc": "Per-contact status updates arrive in a future update.",
+      "itemCount": "{{count}} update",
+      "itemCount_other": "{{count}} updates",
+      "empty": "No contacts have an active status.",
+      "mediaUnavailable": "Media unavailable",
+      "compose": "Post a status",
+      "composeText": "Text",
+      "composeImage": "Image",
+      "recipients": "Who can see this",
+      "recipientsHint": "Baileys requires a recipient list; whatsapp-web.js uses your status-privacy audience.",
+      "noContacts": "No contacts found",
+      "caption": "Caption",
+      "backgroundColor": "Background color",
+      "font": "Font",
+      "fontDefault": "Default",
+      "orLabel": "or",
+      "post": "Post",
+      "posted": "Status posted",
+      "postFailed": "Could not post the status"
     },
     "channels": {
       "notSupported": "Channels are not supported on the Baileys engine.",

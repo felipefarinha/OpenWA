@@ -1,6 +1,7 @@
-import { BadRequestException, PayloadTooLargeException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { StatusService } from './status.service';
 import { SessionService } from '../session/session.service';
+import { StatusStoreService } from '../status-store/status-store.service';
 import { HookManager } from '../../core/hooks';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -17,11 +18,55 @@ describe('StatusService media validation and selection', () => {
   // tests below.
   const passThrough = (_event: string, data: unknown) => Promise.resolve({ continue: true, data });
   const hookManager = { execute: jest.fn(passThrough) };
-  const service = new StatusService(sessionService as unknown as SessionService, hookManager as unknown as HookManager);
+  const store = { list: jest.fn(), listByContact: jest.fn(), getMedia: jest.fn() };
+  const service = new StatusService(
+    sessionService as unknown as SessionService,
+    hookManager as unknown as HookManager,
+    store as unknown as StatusStoreService,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
     hookManager.execute.mockImplementation(passThrough);
+  });
+
+  describe('reading statuses', () => {
+    it('reads statuses from the store, not the engine', async () => {
+      store.list.mockResolvedValue([{ id: 'w1' } as any]);
+
+      const out = await service.getStatuses('sess');
+
+      expect(out).toEqual([{ id: 'w1' }]);
+      expect(store.list).toHaveBeenCalledWith('sess');
+      expect(sessionService.getEngine).not.toHaveBeenCalled();
+    });
+
+    it('reads a contact statuses from the store, not the engine', async () => {
+      store.listByContact.mockResolvedValue([{ id: 'w2' } as any]);
+
+      const out = await service.getContactStatus('sess', 'contact@c.us');
+
+      expect(out).toEqual([{ id: 'w2' }]);
+      expect(store.listByContact).toHaveBeenCalledWith('sess', 'contact@c.us');
+      expect(sessionService.getEngine).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getStatusMedia', () => {
+    it('throws NotFoundException when the store has no media for the status', async () => {
+      store.getMedia.mockResolvedValue(null);
+
+      await expect(service.getStatusMedia('sess', 'w1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('returns the stored path and mimetype', async () => {
+      store.getMedia.mockResolvedValue({ path: 'statuses/sess/x.jpg', mimetype: 'image/jpeg' });
+
+      const media = await service.getStatusMedia('sess', 'w1');
+
+      expect(media).toEqual({ path: 'statuses/sess/x.jpg', mimetype: 'image/jpeg' });
+      expect(store.getMedia).toHaveBeenCalledWith('sess', 'w1');
+    });
   });
 
   it('prefers explicit base64 over url for image and video status media', async () => {

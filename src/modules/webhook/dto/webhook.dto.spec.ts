@@ -23,6 +23,12 @@ describe('webhook DTO event validation', () => {
     ).toHaveLength(0);
   });
 
+  it("CreateWebhookDto: accepts 'status.received'", async () => {
+    expect(
+      await errorsFor(CreateWebhookDto, { url: 'https://x.example/hook', events: ['status.received'] }),
+    ).toHaveLength(0);
+  });
+
   it('UpdateWebhookDto: rejects an empty events array (ArrayMinSize parity)', async () => {
     const errs = await errorsFor(UpdateWebhookDto, { events: [] });
     expect(errs.some(e => e.property === 'events')).toBe(true);

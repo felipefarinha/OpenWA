@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "Status",
-      "placeholderDesc": "As atualizações de status por contato chegarão em uma atualização futura."
+      "placeholderDesc": "As atualizações de status por contato chegarão em uma atualização futura.",
+      "itemCount": "{{count}} atualização",
+      "itemCount_other": "{{count}} atualizações",
+      "empty": "Nenhum contato tem um status ativo.",
+      "mediaUnavailable": "Mídia indisponível",
+      "compose": "Publicar um status",
+      "composeText": "Texto",
+      "composeImage": "Imagem",
+      "recipients": "Quem pode ver isso",
+      "recipientsHint": "O Baileys exige uma lista de destinatários; o whatsapp-web.js usa seu público de privacidade de status.",
+      "noContacts": "Nenhum contato encontrado",
+      "caption": "Legenda",
+      "backgroundColor": "Cor de fundo",
+      "font": "Fonte",
+      "fontDefault": "Padrão",
+      "orLabel": "ou",
+      "post": "Publicar",
+      "posted": "Status publicado",
+      "postFailed": "Não foi possível publicar o status"
     },
     "channels": {
       "notSupported": "Os canais não são compatíveis com o mecanismo Baileys.",

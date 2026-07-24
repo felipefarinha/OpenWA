@@ -148,7 +148,8 @@
     },
     "moduleNameMapper": {
       "^@whiskeysockets/baileys$": "<rootDir>/../test/__mocks__/@whiskeysockets/baileys.ts",
-      "^@whiskeysockets/baileys/(.*)$": "<rootDir>/../test/__mocks__/@whiskeysockets/baileys.ts"
+      "^@whiskeysockets/baileys/(.*)$": "<rootDir>/../test/__mocks__/@whiskeysockets/baileys.ts",
+      "^archiver$": "<rootDir>/../test/__mocks__/archiver.ts"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

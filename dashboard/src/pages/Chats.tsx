@@ -19,6 +19,7 @@ import {
   CornerUpLeft,
   Trash2,
   ChevronDown,
+  Plus,
 } from 'lucide-react';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { useProfilePictures } from '../hooks/useProfilePictures';
@@ -27,6 +28,7 @@ import { formatPhoneForDisplay } from '../utils/formatPhone';
 import {
   sessionApi,
   messageApi,
+  contactApi,
   asMessageType,
   type Session,
   type Chat,
@@ -34,6 +36,7 @@ import {
   type Channel,
   type MessageType,
   type SearchHit,
+  type ContactStatusGroup,
 } from '../services/api';
 import {
   applyMessageEdit,
@@ -46,10 +49,12 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useRole } from '../hooks/useRole';
 import { useToast } from '../components/Toast';
+import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { GlobalSearch } from '../components/GlobalSearch';
 import { useChatMessages, useChatMessagesActions, messagesQueryKey } from '../hooks/useChatMessages';
 import { useChannelMessages } from '../hooks/useChannelMessages';
+import { useContactStatuses } from '../hooks/useContactStatuses';
 import { useChatScrollPosition } from '../hooks/useChatScrollPosition';
 import { useCurrentEngineQuery } from '../hooks/queries';
 import MessageBody from '../components/chats/MessageBody';
@@ -121,11 +126,55 @@ function ChatAvatar({ pictureUrl, kind }: { pictureUrl?: string | null; kind: Ch
   );
 }
 
+// Status image item. <img src="/api/..."> can't carry the X-API-Key header, so the bytes are
+// fetched via sessionApi (which does) and re-exposed as a local object URL. The URL is revoked on
+// unmount/statusId change to avoid leaking blob memory as the viewer browses items.
+function StatusMedia({
+  sessionId,
+  statusId,
+  type,
+}: {
+  sessionId: string | null;
+  statusId: string;
+  type: 'image' | 'video';
+}) {
+  const { t } = useTranslation();
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!sessionId) return undefined;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setSrc(null);
+    setError(false);
+    sessionApi
+      .getStatusMediaBlob(sessionId, statusId)
+      .then(blob => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [sessionId, statusId]);
+
+  if (error) return <span className="status-media-placeholder">{t('chats.status.mediaUnavailable')}</span>;
+  if (!src) return null;
+  if (type === 'video') return <video className="channel-media" src={src} controls />;
+  return <img className="channel-media" src={src} alt="" />;
+}
+
 export function Chats() {
   const { t } = useTranslation();
   useDocumentTitle(t('nav.chats'));
   const { canWrite } = useRole();
-  const { error: showErrorToast, warning: showWarningToast } = useToast();
+  const { success: showSuccessToast, error: showErrorToast, warning: showWarningToast } = useToast();
 
   // Sessions list & active session
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -140,6 +189,7 @@ export function Chats() {
   // Selected chat & message history
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
+  const [activeStatusContact, setActiveStatusContact] = useState<ContactStatusGroup | null>(null);
 
   // Chats/Channels/Status tab selection. Switching tabs closes whatever conversation is open so a
   // press on another tab doesn't leave a Chats-tab room rendered underneath a Channels/Status list.
@@ -148,6 +198,7 @@ export function Chats() {
     setActiveTab(tab);
     setActiveChat(null);
     setActiveChannel(null);
+    setActiveStatusContact(null);
   }, []);
 
   // Channels tab: only whatsapp-web.js implements channel listing/reading — Baileys throws 501 for
@@ -161,6 +212,10 @@ export function Chats() {
   });
   const channelMessages = useChannelMessages(selectedSessionId, activeChannel?.id ?? null);
 
+  // Status tab: both engines expose stored status content, so this query isn't engine-gated (unlike
+  // channelsQuery above).
+  const statusesQuery = useContactStatuses(selectedSessionId);
+
   // A channel feed opens at its newest post, mirroring the chat room's initial scroll. The pane is
   // also keyed by channel id, so switching channels remounts the feed instead of reusing the DOM
   // (and its stale scroll offset) of the previous channel.
@@ -169,6 +224,124 @@ export function Chats() {
     const el = channelFeedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [activeChannel?.id, channelMessages.data]);
+
+  // Same open-at-newest behavior for the status viewer pane, keyed off the active contact and its
+  // item list.
+  const statusFeedRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = statusFeedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeStatusContact?.contact.id, activeStatusContact?.items]);
+
+  // --- Status compose modal ---
+  // Baileys targets a status post to an explicit allow-list (statusJidList); whatsapp-web.js has no
+  // per-recipient concept and broadcasts to the account's status-privacy audience instead, so the
+  // recipient picker is Baileys-only.
+  const isBaileysEngine = currentEngine.data?.engineType === 'baileys';
+
+  const [composeOpen, setComposeOpen] = useState<boolean>(false);
+  const [composeType, setComposeType] = useState<'text' | 'image'>('text');
+  const [composeText, setComposeText] = useState<string>('');
+  const [composeBgColor, setComposeBgColor] = useState<string>('');
+  const [composeFont, setComposeFont] = useState<string>('');
+  const [composeImageUrl, setComposeImageUrl] = useState<string>('');
+  const [composeImageBase64, setComposeImageBase64] = useState<string | null>(null);
+  const [composeCaption, setComposeCaption] = useState<string>('');
+  const [composeRecipients, setComposeRecipients] = useState<string[]>([]);
+  const [composeRecipientSearch, setComposeRecipientSearch] = useState<string>('');
+  const [composePosting, setComposePosting] = useState<boolean>(false);
+  const composeFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Sourced only while the modal is actually open on Baileys — no reason to fetch the full contact
+  // list on wwjs (no picker) or before the user has opened compose.
+  const composeContactsQuery = useQuery({
+    queryKey: ['status-compose-contacts', selectedSessionId],
+    queryFn: () => contactApi.list(selectedSessionId!),
+    enabled: composeOpen && isBaileysEngine && Boolean(selectedSessionId),
+  });
+  const composeContacts = composeContactsQuery.data ?? [];
+  const composeRecipientSearchLower = composeRecipientSearch.toLowerCase();
+  const filteredComposeContacts = composeContacts.filter(c =>
+    (c.name ?? c.pushName ?? c.number ?? c.id).toLowerCase().includes(composeRecipientSearchLower),
+  );
+
+  const resetComposeForm = useCallback(() => {
+    setComposeType('text');
+    setComposeText('');
+    setComposeBgColor('');
+    setComposeFont('');
+    setComposeImageUrl('');
+    setComposeImageBase64(null);
+    setComposeCaption('');
+    setComposeRecipients([]);
+    setComposeRecipientSearch('');
+    if (composeFileInputRef.current) composeFileInputRef.current.value = '';
+  }, []);
+
+  const closeComposeModal = useCallback(() => {
+    setComposeOpen(false);
+    resetComposeForm();
+  }, [resetComposeForm]);
+
+  const toggleComposeRecipient = (id: string) => {
+    setComposeRecipients(prev => (prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]));
+  };
+
+  const handleComposeImageUrlChange = (value: string) => {
+    setComposeImageUrl(value);
+    if (value) {
+      setComposeImageBase64(null);
+      if (composeFileInputRef.current) composeFileInputRef.current.value = '';
+    }
+  };
+
+  const handleComposeImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setComposeImageUrl('');
+    const reader = new FileReader();
+    reader.onload = event => {
+      // The backend's stripBase64DataUri unwraps a `data:...;base64,` prefix, so passing the raw
+      // data URL through as `base64` is safe — no need to slice it ourselves.
+      setComposeImageBase64(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const composeCanSubmit =
+    Boolean(selectedSessionId) &&
+    !composePosting &&
+    (composeType === 'text' ? composeText.trim().length > 0 : Boolean(composeImageBase64 || composeImageUrl.trim())) &&
+    (!isBaileysEngine || composeRecipients.length > 0);
+
+  const handleComposeSubmit = async () => {
+    if (!selectedSessionId || !composeCanSubmit) return;
+    setComposePosting(true);
+    try {
+      // whatsapp-web.js ignores `recipients` entirely (it broadcasts to status@broadcast and only
+      // logs a one-time warning if the field is non-empty), but the backend DTO still requires a
+      // non-empty, JID-shaped array on every engine (SendTextStatusDto/SendImageStatusDto:
+      // @ArrayMinSize(1), no @IsOptional) — an empty array 400s regardless of engine. The picker is
+      // hidden on wwjs since it has no effect there; this placeholder just keeps the request valid.
+      const recipients = isBaileysEngine ? composeRecipients : ['0@c.us'];
+      if (composeType === 'text') {
+        await sessionApi.postTextStatus(selectedSessionId, composeText.trim(), recipients, {
+          backgroundColor: composeBgColor || undefined,
+          font: composeFont === '' ? undefined : Number(composeFont),
+        });
+      } else {
+        const image = composeImageBase64 ? { base64: composeImageBase64 } : { url: composeImageUrl.trim() };
+        await sessionApi.postImageStatus(selectedSessionId, image, recipients, composeCaption.trim() || undefined);
+      }
+      showSuccessToast(t('chats.status.posted'));
+      closeComposeModal();
+      statusesQuery.refetch();
+    } catch (err) {
+      showErrorToast(t('chats.status.postFailed'), err instanceof Error ? err.message : undefined);
+    } finally {
+      setComposePosting(false);
+    }
+  };
 
   const {
     data: messages = [],
@@ -325,6 +498,7 @@ export function Chats() {
       void loadChats(selectedSessionId);
       setActiveChat(null);
       setActiveChannel(null);
+      setActiveStatusContact(null);
       setAttachment(null);
       setPreviewUrl(null);
     }
@@ -677,10 +851,12 @@ export function Chats() {
             setActiveTab('status');
             setActiveChat(chat);
             setActiveChannel(null);
+            setActiveStatusContact(null);
           } else {
             setActiveTab('chats');
             setActiveChat(chat);
             setActiveChannel(null);
+            setActiveStatusContact(null);
           }
         } else {
           pendingHitRef.current = null;
@@ -703,10 +879,12 @@ export function Chats() {
         setActiveTab('status');
         setActiveChat(chat);
         setActiveChannel(null);
+        setActiveStatusContact(null);
       } else {
         setActiveTab('chats');
         setActiveChat(chat);
         setActiveChannel(null);
+        setActiveStatusContact(null);
       }
     }
   }, [chats, activeChat, switchTab]);
@@ -933,6 +1111,28 @@ export function Chats() {
     ch => ch.name.toLowerCase().includes(searchQueryLower) || ch.id.toLowerCase().includes(searchQueryLower),
   );
 
+  // Status tab: group the flat status list by contact (one row per contact, newest status first
+  // within each group), newest-contact-first across groups, filtered by the same search box.
+  // A plain const (not useMemo) mirrors filteredChats/filteredChannels above — statusesQuery.data
+  // is already a stable, query-cached reference, so re-grouping on every render is cheap.
+  const byStatusContact = new Map<string, ContactStatusGroup>();
+  for (const item of statusesQuery.data ?? []) {
+    const existing = byStatusContact.get(item.contact.id);
+    if (existing) {
+      existing.items.push(item);
+      if (item.timestamp > existing.latest) existing.latest = item.timestamp;
+    } else {
+      byStatusContact.set(item.contact.id, { contact: item.contact, items: [item], latest: item.timestamp });
+    }
+  }
+  const groupedStatuses = Array.from(byStatusContact.values())
+    .filter(
+      g =>
+        (g.contact.name ?? '').toLowerCase().includes(searchQueryLower) ||
+        g.contact.id.toLowerCase().includes(searchQueryLower),
+    )
+    .sort((a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : 0));
+
   // Shared row markup for the Chats and Status lists — a plain function (not memoized) since it
   // closes over render-scoped state (activeChat, listPics) that already changes every render.
   const renderChatRow = (chat: Chat) => {
@@ -1025,7 +1225,7 @@ export function Chats() {
           </p>
         </div>
       ) : (
-        <div className={`chats-layout ${activeChat || activeChannel ? 'has-active-chat' : ''}`}>
+        <div className={`chats-layout ${activeChat || activeChannel || activeStatusContact ? 'has-active-chat' : ''}`}>
           {/* LEFT SIDEBAR: session & chat rooms */}
           <aside className="chats-sidebar">
             <div className="sidebar-header-box">
@@ -1071,6 +1271,14 @@ export function Chats() {
                   onChange={e => setSearchQuery(e.target.value)}
                 />
               </div>
+
+              {/* Compose a new status — only meaningful on the Status tab. */}
+              {activeTab === 'status' && (
+                <button type="button" className="btn-primary status-compose-trigger" onClick={() => setComposeOpen(true)}>
+                  <Plus size={16} />
+                  {t('chats.status.compose')}
+                </button>
+              )}
             </div>
 
             {/* Chat list */}
@@ -1145,16 +1353,46 @@ export function Chats() {
               </div>
             )}
 
-            {/* Status list — the wwjs status@broadcast aggregate row, if present. Real per-status
-                (per-contact story) rows are a future capability; this tab starts as a placeholder. */}
+            {/* Status list — the wwjs status@broadcast aggregate row, if present, followed by the
+                per-contact status groups read from the store. Not engine-gated: both engines now
+                have status content. */}
             {activeTab === 'status' && (
               <div className="chats-list">
                 {statusChats.map(renderChatRow)}
-                <div className="chats-room-placeholder">
-                  <CircleDashed size={40} />
-                  <h2>{t('chats.status.placeholderTitle')}</h2>
-                  <p>{t('chats.status.placeholderDesc')}</p>
-                </div>
+                {statusesQuery.isLoading ? (
+                  <div className="chats-list-loading">
+                    <Loader2 className="animate-spin" size={24} />
+                  </div>
+                ) : groupedStatuses.length === 0 ? (
+                  <div className="chats-list-empty">
+                    <span>{t('chats.status.empty')}</span>
+                  </div>
+                ) : (
+                  groupedStatuses.map(group => (
+                    <div
+                      key={group.contact.id}
+                      className={`chat-item-card ${activeStatusContact?.contact.id === group.contact.id ? 'active' : ''}`}
+                      onClick={() => setActiveStatusContact(group)}
+                    >
+                      <div className="chat-avatar">
+                        <CircleDashed size={20} />
+                      </div>
+                      <div className="chat-item-info">
+                        <div className="chat-item-top">
+                          <span className="chat-item-name">{group.contact.name || group.contact.id}</span>
+                          <span className="chat-item-time">
+                            {formatChatTime(Math.floor(new Date(group.latest).getTime() / 1000))}
+                          </span>
+                        </div>
+                        <div className="chat-item-bottom">
+                          <span className="chat-item-snippet">
+                            {t('chats.status.itemCount', { count: group.items.length })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </aside>
@@ -1593,6 +1831,39 @@ export function Chats() {
                   )}
                 </div>
               </div>
+            ) : activeStatusContact ? (
+              // Read-only status viewer: no send footer, reactions, delete, reply, or markChatRead —
+              // statuses are ephemeral broadcast posts, not a two-way conversation.
+              <div key={activeStatusContact.contact.id} className="channel-room">
+                <header className="chats-room-header">
+                  <button
+                    className="room-back"
+                    onClick={() => setActiveStatusContact(null)}
+                    aria-label={t('common.back')}
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+                  <CircleDashed size={20} />
+                  <h2>{activeStatusContact.contact.name ?? activeStatusContact.contact.id}</h2>
+                </header>
+                <div className="messages-list" ref={statusFeedRef}>
+                  {activeStatusContact.items.map(item => (
+                    <div key={item.id} className="message-bubble incoming">
+                      {item.mediaUrl && (
+                        <StatusMedia
+                          sessionId={selectedSessionId || null}
+                          statusId={item.id}
+                          type={item.type === 'video' ? 'video' : 'image'}
+                        />
+                      )}
+                      {item.caption && <MessageBody text={item.caption} className="message-text" />}
+                      <span className="message-time">
+                        {formatChatTime(Math.floor(new Date(item.timestamp).getTime() / 1000))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="chats-room-placeholder">
                 <MessageSquare size={80} className="placeholder-icon" />
@@ -1610,6 +1881,138 @@ export function Chats() {
         onClose={() => setLightboxIndex(null)}
         onNavigate={setLightboxIndex}
       />
+
+      {composeOpen && (
+        <Modal
+          open
+          onClose={closeComposeModal}
+          title={t('chats.status.compose')}
+          closeLabel={t('common.close')}
+          className="status-compose-modal"
+          footer={
+            <>
+              <button className="btn-secondary" onClick={closeComposeModal} disabled={composePosting}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn-primary" onClick={handleComposeSubmit} disabled={!composeCanSubmit}>
+                {composePosting ? <Loader2 className="animate-spin" size={16} /> : t('chats.status.post')}
+              </button>
+            </>
+          }
+        >
+          <div className="compose-type-toggle">
+            <button type="button" className={composeType === 'text' ? 'active' : ''} onClick={() => setComposeType('text')}>
+              {t('chats.status.composeText')}
+            </button>
+            <button
+              type="button"
+              className={composeType === 'image' ? 'active' : ''}
+              onClick={() => setComposeType('image')}
+            >
+              {t('chats.status.composeImage')}
+            </button>
+          </div>
+
+          {composeType === 'text' ? (
+            <>
+              <div className="compose-field">
+                <label>{t('chats.status.composeText')}</label>
+                <textarea
+                  value={composeText}
+                  onChange={e => setComposeText(e.target.value)}
+                  maxLength={4096}
+                  placeholder={t('chats.status.composeText')}
+                />
+              </div>
+              <div className="compose-row">
+                <div className="compose-field">
+                  <label>{t('chats.status.backgroundColor')}</label>
+                  <input
+                    type="color"
+                    value={composeBgColor || '#000000'}
+                    onChange={e => setComposeBgColor(e.target.value)}
+                  />
+                </div>
+                <div className="compose-field">
+                  <label>{t('chats.status.font')}</label>
+                  <select value={composeFont} onChange={e => setComposeFont(e.target.value)}>
+                    <option value="">{t('chats.status.fontDefault')}</option>
+                    {[0, 1, 2, 3, 4, 5].map(f => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="compose-field">
+                <label>{t('chats.status.composeImage')}</label>
+                <input
+                  type="url"
+                  placeholder="https://example.com/image.jpg"
+                  value={composeImageUrl}
+                  onChange={e => handleComposeImageUrlChange(e.target.value)}
+                />
+              </div>
+              <p className="compose-image-or">{t('chats.status.orLabel')}</p>
+              <div className="compose-field">
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={composeFileInputRef}
+                  onChange={handleComposeImageFile}
+                />
+              </div>
+              <div className="compose-field">
+                <label>{t('chats.status.caption')}</label>
+                <input
+                  type="text"
+                  placeholder={t('chats.captionPlaceholder')}
+                  value={composeCaption}
+                  onChange={e => setComposeCaption(e.target.value)}
+                  maxLength={1024}
+                />
+              </div>
+            </>
+          )}
+
+          {isBaileysEngine && (
+            <div className="compose-field">
+              <label>{t('chats.status.recipients')}</label>
+              <input
+                type="text"
+                placeholder={t('common.search')}
+                value={composeRecipientSearch}
+                onChange={e => setComposeRecipientSearch(e.target.value)}
+              />
+              <div className="compose-recipients">
+                {composeContactsQuery.isLoading ? (
+                  <div className="compose-recipients-empty">
+                    <Loader2 className="animate-spin" size={16} />
+                  </div>
+                ) : filteredComposeContacts.length === 0 ? (
+                  <div className="compose-recipients-empty">{t('chats.status.noContacts')}</div>
+                ) : (
+                  filteredComposeContacts.map(c => (
+                    <label key={c.id} className="compose-recipient-row">
+                      <input
+                        type="checkbox"
+                        checked={composeRecipients.includes(c.id)}
+                        onChange={() => toggleComposeRecipient(c.id)}
+                      />
+                      <span>{c.name || c.pushName || c.number || c.id}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <p className="input-hint">{t('chats.status.recipientsHint')}</p>
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }

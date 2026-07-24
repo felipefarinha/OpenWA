@@ -2690,6 +2690,8 @@ Note: this is the one route in the module that returns a literal `{ success: tru
 
 Labels are a WhatsApp Business feature: every label route lives under a session and reads/writes the chat-label assignments exposed by the engine. Status routes manage the session's status feed (stories) — reading visible statuses and posting/deleting your own. Read routes require a base API key; all writes require `OPERATOR`.
 
+**Reads are store-backed, not engine-direct.** `GET /status` and `GET /status/:contactId` no longer call the engine — they read from an OpenWA-side store that ingests inbound status/story broadcasts as they arrive (plus a best-effort backfill of currently-active stories on session connect), with a 24h TTL matching WhatsApp's own story expiry. This makes reads **identical on both engines**: `whatsapp-web.js` (which had a native `getBroadcasts()`/`getBroadcastById()` path) and Baileys (which never had one — `fetchStatus` only returns the *about* text, not stories, so the raw engine methods still throw `501` if called directly, they're just no longer on the read path) now return the same shape from the same source. A status older than 24h, or received before the store existed, will not appear.
+
 #### GET /api/sessions/:sessionId/labels
 
 List all labels defined for the session (WhatsApp Business accounts only).
@@ -2822,7 +2824,7 @@ The handler always returns `{ "success": true }`. DELETE default status is `200`
 
 #### GET /api/sessions/:sessionId/status
 
-Get all contact status updates (stories) visible to the session.
+Get all contact status updates (stories) visible to the session, read from the store (24h TTL, both engines — see the note above).
 
 **Auth:** API key
 
@@ -2842,7 +2844,7 @@ Get all contact status updates (stories) visible to the session.
       "contact": { "id": "6281234567890@c.us", "name": "Alice", "pushName": "Alice" },
       "type": "image",
       "caption": "On the road",
-      "mediaUrl": "https://…",
+      "mediaUrl": "/api/sessions/my-session/status/false_6281234567890@c.us_3A1F.../media",
       "backgroundColor": "#25D366",
       "font": 2,
       "timestamp": "2026-06-25T08:30:00.000Z",
@@ -2852,13 +2854,13 @@ Get all contact status updates (stories) visible to the session.
 }
 ```
 
-The controller wraps the engine array in `{ statuses }`. `type` is one of `text | image | video`; `caption`, `mediaUrl`, `backgroundColor`, `font` are optional. `timestamp` and `expiresAt` serialize to ISO strings (these are `Date` values, not the epoch-number convention used by message timestamps).
+The controller wraps the store array in `{ statuses }`, ordered newest-first. `type` is one of `text | image | video`; `caption`, `backgroundColor`, `font` are optional. `mediaUrl` is present only when the status carried media that the store kept (see the media endpoint below) — it is a same-origin path into this API, not an external WhatsApp CDN link. `timestamp` and `expiresAt` serialize to ISO strings (these are `Date` values, not the epoch-number convention used by message timestamps).
 
-**Errors:** `401` missing/invalid API key, or key not scoped to this session · `404` `Session {id} not found or not connected`
+**Errors:** `401` missing/invalid API key, or key not scoped to this session
 
 #### GET /api/sessions/:sessionId/status/:contactId
 
-Get status updates posted by a specific contact.
+Get status updates posted by a specific contact, read from the store (24h TTL, both engines).
 
 **Auth:** API key
 
@@ -2888,9 +2890,28 @@ Get status updates posted by a specific contact.
 }
 ```
 
-Same `{ statuses }` wrapper and `Status` shape as the list-all route.
+Same `{ statuses }` wrapper and `Status` shape as the list-all route. An unknown `contactId` returns `{ "statuses": [] }`, not a `404`.
 
-**Errors:** `401` missing/invalid API key, or key not scoped to this session · `404` session not found / not connected
+**Errors:** `401` missing/invalid API key, or key not scoped to this session
+
+#### GET /api/sessions/:sessionId/status/:statusId/media
+
+Stream a stored status's media bytes (the file behind a `mediaUrl` returned above).
+
+**Auth:** API key
+
+**Path parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sessionId | string | WhatsApp session identifier |
+| statusId | string | The status `id` (e.g. from a `GET /status` response) |
+
+**Response** `200` — the raw media bytes as the response body, with `Content-Type` set to the stored mimetype (e.g. `image/jpeg`, `video/mp4`). Streamed via `StreamableFile` from whatever backs `StorageService` (local disk or S3 — the route does not care which).
+
+**Errors:** `401` missing/invalid API key, or key not scoped to this session · `404` `Status media not found or expired` — the status is text-only, its media was omitted (e.g. over the configured size cap), or the 24h TTL has since purged the row
+
+Note: `:statusId/media` is a two-path-segment route, so it never collides with the single-segment `GET /status/:contactId` above regardless of declaration order.
 
 #### POST /api/sessions/:sessionId/status/send-text
 
@@ -4884,6 +4905,9 @@ These are the events OpenWA actually emits. A webhook is registered with an `eve
 | `group.leave` | Participant(s) leave or are removed from a group | `{ groupId, actorId?, participantIds, timestamp }` |
 | `group.update` | Group metadata changes (subject, description, announce/locked settings) | `{ groupId, actorId?, participantIds, changes?, timestamp }` — `changes` carries only the fields that changed: `subject?`, `description?`, `announce?`, `locked?` |
 | `call.received` | An incoming voice/video call starts ringing | `{ callId, from, isVideo, isGroup, timestamp }` — `callId` is the id to pass to `POST /sessions/:sessionId/calls/:callId/reject` |
+| `status.received` | A contact posts a status/story (opt-in — see below) | `{ sessionId, statusId, contact: { id, name?, pushName? }, type, caption?, hasMedia, mediaOmitted, omitReason?, postedAt, expiresAt }` — `statusId` is the store's `id` (usable with the status endpoints below); `postedAt`/`expiresAt` are epoch **milliseconds** (unlike the epoch-seconds convention for message timestamps), matching the `GET /status` store's own `Date`-backed fields |
+
+> **`status.received` is opt-in and carries no media blob.** Unlike every other event above, `status.received` is only delivered to a webhook whose `events` list explicitly includes `"status.received"` (or `"*"`) — registering for other events does not implicitly subscribe you to it. The payload never embeds media bytes: when `hasMedia` is `true`, fetch the file separately via `GET /api/sessions/:sessionId/status/:statusId/media`. Your own posted statuses never trigger this event — only inbound stories from contacts (an own-send echo is dropped before ingest).
 
 > **`STORE_EPHEMERAL_MESSAGES=false` affects `message.received`.** When `STORE_EPHEMERAL_MESSAGES` is set to `false`, incoming disappearing messages (those with `ephemeralDuration > 0`) are **not** persisted nor dispatched — no DB insert, no webhook delivery, and no websocket event. Downstream consumers and the dashboard both stop seeing them. Default is `true` (backward compatible — store and dispatch everything).
 

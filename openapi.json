@@ -4246,6 +4246,41 @@
         ]
       }
     },
+    "/api/sessions/{sessionId}/status/{statusId}/media": {
+      "get": {
+        "operationId": "StatusController_getStatusMedia",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statusId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The status image/video bytes."
+          },
+          "404": {
+            "description": "No stored media (text status, omitted, or expired)."
+          }
+        },
+        "summary": "Stream a stored status media file",
+        "tags": [
+          "status"
+        ]
+      }
+    },
     "/api/sessions/{sessionId}/status/send-text": {
       "post": {
         "operationId": "StatusController_sendTextStatus",
@@ -6342,6 +6377,7 @@
                 "message.revoked",
                 "message.reaction",
                 "message.edited",
+                "status.received",
                 "session.status",
                 "session.qr",
                 "session.authenticated",
@@ -6487,6 +6523,7 @@
                 "message.revoked",
                 "message.reaction",
                 "message.edited",
+                "status.received",
                 "session.status",
                 "session.qr",
                 "session.authenticated",

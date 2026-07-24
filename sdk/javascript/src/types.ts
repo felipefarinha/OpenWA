@@ -496,6 +496,7 @@ export type WebhookEvent =
   | 'group.leave'
   | 'group.update'
   | 'call.received'
+  | 'status.received'
   | '*';
 
 export interface WebhookFilterCondition {
@@ -588,9 +589,6 @@ export interface StatusRecord {
   type: 'text' | 'image' | 'video';
   /** Text body for a text status, caption for an image/video one. */
   caption?: string;
-  // Declared by the backend `Status`, but no engine populates them on a read yet: whatsapp-web.js
-  // maps neither, and Baileys does not support reading statuses at all. Present for forward
-  // compatibility — do not expect them on a response today.
   mediaUrl?: string;
   backgroundColor?: string;
   font?: number;

@@ -40,6 +40,8 @@ public enum WebhookEvent {
     GROUP_UPDATE,
     @SerializedName("call.received")
     CALL_RECEIVED,
+    @SerializedName("status.received")
+    STATUS_RECEIVED,
     @SerializedName("*")
     ALL
 }

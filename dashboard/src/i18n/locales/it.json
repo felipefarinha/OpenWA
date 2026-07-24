@@ -124,7 +124,25 @@
     },
     "status": {
       "placeholderTitle": "Stato",
-      "placeholderDesc": "Gli aggiornamenti di stato per contatto arriveranno in un aggiornamento futuro."
+      "placeholderDesc": "Gli aggiornamenti di stato per contatto arriveranno in un aggiornamento futuro.",
+      "itemCount": "{{count}} aggiornamento",
+      "itemCount_other": "{{count}} aggiornamenti",
+      "empty": "Nessun contatto ha uno stato attivo.",
+      "mediaUnavailable": "Contenuto multimediale non disponibile",
+      "compose": "Pubblica uno stato",
+      "composeText": "Testo",
+      "composeImage": "Immagine",
+      "recipients": "Chi può vedere questo",
+      "recipientsHint": "Baileys richiede un elenco di destinatari; whatsapp-web.js utilizza il tuo pubblico di privacy dello stato.",
+      "noContacts": "Nessun contatto trovato",
+      "caption": "Didascalia",
+      "backgroundColor": "Colore di sfondo",
+      "font": "Carattere",
+      "fontDefault": "Predefinito",
+      "orLabel": "o",
+      "post": "Pubblica",
+      "posted": "Stato pubblicato",
+      "postFailed": "Impossibile pubblicare lo stato"
     },
     "channels": {
       "notSupported": "I canali non sono supportati sul motore Baileys.",
