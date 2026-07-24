@@ -1,15 +1,4 @@
-import {
-  IsString,
-  IsOptional,
-  IsInt,
-  Min,
-  Max,
-  Matches,
-  MaxLength,
-  IsArray,
-  ArrayMinSize,
-  ArrayMaxSize,
-} from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, Max, Matches, MaxLength, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ToStrictNumber } from '../../../common/utils/strict-boolean';
 
@@ -33,21 +22,20 @@ export class SendTextStatusDto {
   @Max(5)
   font?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Recipient JIDs (1–256). WhatsApp Status is not posted to a group — use @c.us or @lid individuals. ' +
-      'Honored on the Baileys engine only: whatsapp-web.js ignores this allow-list and broadcasts to the ' +
-      "account's status-privacy audience.",
+      'Recipient JIDs (0–256). WhatsApp Status is not posted to a group — use @c.us or @lid individuals. ' +
+      'Required on the Baileys engine (it posts to exactly this allow-list); ignored by whatsapp-web.js, ' +
+      "which broadcasts to the account's status-privacy audience — omit it there.",
     type: String,
     isArray: true,
     example: ['628123456789@c.us'],
-    minItems: 1,
     maxItems: 256,
   })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(256)
   @IsString({ each: true })
   @Matches(/^\d+@(c\.us|lid)$/, { each: true, message: 'Invalid recipient JID' })
-  recipients: string[];
+  recipients?: string[];
 }

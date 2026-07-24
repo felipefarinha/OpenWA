@@ -264,8 +264,12 @@ export interface Status {
 }
 
 export interface StatusPostOptions {
-  /** REQUIRED. Neutral JIDs (@c.us / @lid) permitted to see the status. Maps to Baileys statusJidList. */
-  recipients: string[];
+  /**
+   * Neutral JIDs (@c.us / @lid) permitted to see the status. Maps to Baileys statusJidList.
+   * REQUIRED on the Baileys engine (it rejects an absent/empty list with a 400); ignored by
+   * whatsapp-web.js, which broadcasts to the account's status-privacy audience.
+   */
+  recipients?: string[];
   /** Hex background colour (#RRGGBB). Text status only. */
   backgroundColor?: string;
   /** Font index. Text status only. */

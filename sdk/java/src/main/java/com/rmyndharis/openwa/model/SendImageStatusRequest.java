@@ -19,7 +19,7 @@ public record SendImageStatusRequest(StatusMediaInput image, List<String> recipi
             return this;
         }
 
-        /** Recipient JIDs the status is addressed to (required by the server; empty → 400). */
+        /** Recipient JIDs. Required on the Baileys engine (absent/empty → 400); omit on whatsapp-web.js, which broadcasts instead. */
         public Builder recipients(List<String> v) {
             this.recipients = v;
             return this;

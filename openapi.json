@@ -7547,11 +7547,10 @@
             "maximum": 5
           },
           "recipients": {
-            "description": "Recipient JIDs (1–256). WhatsApp Status is not posted to a group — use @c.us or @lid individuals. Honored on the Baileys engine only: whatsapp-web.js ignores this allow-list and broadcasts to the account's status-privacy audience.",
+            "description": "Recipient JIDs (0–256). WhatsApp Status is not posted to a group — use @c.us or @lid individuals. Required on the Baileys engine (it posts to exactly this allow-list); ignored by whatsapp-web.js, which broadcasts to the account's status-privacy audience — omit it there.",
             "example": [
               "628123456789@c.us"
             ],
-            "minItems": 1,
             "maxItems": 256,
             "type": "array",
             "items": {
@@ -7560,8 +7559,7 @@
           }
         },
         "required": [
-          "text",
-          "recipients"
+          "text"
         ]
       },
       "StatusMediaInput": {
@@ -7602,11 +7600,10 @@
             "maxLength": 1024
           },
           "recipients": {
-            "description": "Recipient JIDs (1–256), @c.us or @lid. Honored on the Baileys engine only: whatsapp-web.js ignores this allow-list and broadcasts to the account's status-privacy audience.",
+            "description": "Recipient JIDs (0–256), @c.us or @lid. Required on the Baileys engine (it posts to exactly this allow-list); ignored by whatsapp-web.js, which broadcasts to the account's status-privacy audience — omit it there.",
             "example": [
               "628123456789@c.us"
             ],
-            "minItems": 1,
             "maxItems": 256,
             "type": "array",
             "items": {
@@ -7615,8 +7612,7 @@
           }
         },
         "required": [
-          "image",
-          "recipients"
+          "image"
         ]
       },
       "SendVideoStatusDto": {
@@ -7637,11 +7633,10 @@
             "maxLength": 1024
           },
           "recipients": {
-            "description": "Recipient JIDs (1–256), @c.us or @lid. Honored on the Baileys engine only: whatsapp-web.js ignores this allow-list and broadcasts to the account's status-privacy audience.",
+            "description": "Recipient JIDs (0–256), @c.us or @lid. Required on the Baileys engine (it posts to exactly this allow-list); ignored by whatsapp-web.js, which broadcasts to the account's status-privacy audience — omit it there.",
             "example": [
               "628123456789@c.us"
             ],
-            "minItems": 1,
             "maxItems": 256,
             "type": "array",
             "items": {
@@ -7650,8 +7645,7 @@
           }
         },
         "required": [
-          "video",
-          "recipients"
+          "video"
         ]
       },
       "SendProductDto": {

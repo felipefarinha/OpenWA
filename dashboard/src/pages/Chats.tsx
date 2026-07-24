@@ -226,8 +226,9 @@ export function Chats() {
   const channelMessages = useChannelMessages(selectedSessionId, activeChannel?.id ?? null);
 
   // Status tab: both engines expose stored status content, so this query isn't engine-gated (unlike
-  // channelsQuery above).
-  const statusesQuery = useContactStatuses(selectedSessionId);
+  // channelsQuery above) — but it is tab-gated the same way, so selecting a session on another tab
+  // doesn't fire a background /status fetch nobody is looking at.
+  const statusesQuery = useContactStatuses(selectedSessionId, activeTab === 'status');
 
   // A channel feed opens at its newest post, mirroring the chat room's initial scroll. The pane is
   // also keyed by channel id, so switching channels remounts the feed instead of reusing the DOM
@@ -264,6 +265,9 @@ export function Chats() {
   const [composeRecipientSearch, setComposeRecipientSearch] = useState<string>('');
   const [composePosting, setComposePosting] = useState<boolean>(false);
   const composeFileInputRef = useRef<HTMLInputElement | null>(null);
+  // Monotonic token invalidating an in-flight FileReader: picking a file reads asynchronously, and
+  // a URL edit (or form reset) before `onload` fires must win over the late-arriving file bytes.
+  const composeImageReadSeq = useRef(0);
 
   // Sourced only while the modal is actually open on Baileys — no reason to fetch the full contact
   // list on wwjs (no picker) or before the user has opened compose.
@@ -279,6 +283,7 @@ export function Chats() {
   );
 
   const resetComposeForm = useCallback(() => {
+    composeImageReadSeq.current += 1;
     setComposeType('text');
     setComposeText('');
     setComposeBgColor('');
@@ -301,6 +306,7 @@ export function Chats() {
   };
 
   const handleComposeImageUrlChange = (value: string) => {
+    composeImageReadSeq.current += 1;
     setComposeImageUrl(value);
     if (value) {
       setComposeImageBase64(null);
@@ -312,8 +318,11 @@ export function Chats() {
     const file = e.target.files?.[0];
     if (!file) return;
     setComposeImageUrl('');
+    const myRead = ++composeImageReadSeq.current;
     const reader = new FileReader();
     reader.onload = event => {
+      // A URL edit or form reset since the read started supersedes these bytes — drop them.
+      if (composeImageReadSeq.current !== myRead) return;
       // The backend's stripBase64DataUri unwraps a `data:...;base64,` prefix, so passing the raw
       // data URL through as `base64` is safe — no need to slice it ourselves.
       setComposeImageBase64(event.target?.result as string);
@@ -324,6 +333,9 @@ export function Chats() {
   const composeCanSubmit =
     Boolean(selectedSessionId) &&
     !composePosting &&
+    // The engine type decides whether recipients are required (Baileys) or omitted (wwjs) — while
+    // it's still unknown, a Baileys submit would go out with no recipients and 400.
+    Boolean(currentEngine.data) &&
     (composeType === 'text' ? composeText.trim().length > 0 : Boolean(composeImageBase64 || composeImageUrl.trim())) &&
     (!isBaileysEngine || composeRecipients.length > 0);
 
@@ -331,12 +343,10 @@ export function Chats() {
     if (!selectedSessionId || !composeCanSubmit) return;
     setComposePosting(true);
     try {
-      // whatsapp-web.js ignores `recipients` entirely (it broadcasts to status@broadcast and only
-      // logs a one-time warning if the field is non-empty), but the backend DTO still requires a
-      // non-empty, JID-shaped array on every engine (SendTextStatusDto/SendImageStatusDto:
-      // @ArrayMinSize(1), no @IsOptional) — an empty array 400s regardless of engine. The picker is
-      // hidden on wwjs since it has no effect there; this placeholder just keeps the request valid.
-      const recipients = isBaileysEngine ? composeRecipients : ['0@c.us'];
+      // whatsapp-web.js ignores `recipients` entirely (it broadcasts to status@broadcast), so none
+      // are sent — the backend DTO treats the list as optional and only the Baileys engine requires
+      // (and honors) it. The picker is hidden on wwjs since it has no effect there.
+      const recipients = isBaileysEngine ? composeRecipients : undefined;
       if (composeType === 'text') {
         await sessionApi.postTextStatus(selectedSessionId, composeText.trim(), recipients, {
           backgroundColor: composeBgColor || undefined,
@@ -1116,8 +1126,6 @@ export function Chats() {
   // Chats tab: real conversations. Channel/status-kind rows are hidden here and surfaced on their
   // own tabs instead.
   const filteredChats = chats.filter(c => c.kind !== 'channel' && c.kind !== 'status' && searchMatch(c));
-  // Status tab: the wwjs aggregate status@broadcast row, if getChats returned one.
-  const statusChats = chats.filter(c => c.kind === 'status' && searchMatch(c));
 
   // Channels tab: same search box, filtered client-side like the other two tabs. The zero-state
   // ("not subscribed to any channels") stays keyed on the unfiltered list below, so a non-matching
@@ -1127,8 +1135,10 @@ export function Chats() {
     ch => ch.name.toLowerCase().includes(searchQueryLower) || ch.id.toLowerCase().includes(searchQueryLower),
   );
 
-  // Status tab: group the flat status list by contact (one row per contact, newest status first
-  // within each group), newest-contact-first across groups, filtered by the same search box.
+  // Status tab: group the flat status list by contact (one row per contact), newest-contact-first
+  // across groups, filtered by the same search box. The store returns statuses newest-first
+  // (postedAt DESC); each group's items are flipped to oldest-first so the viewer reads like a
+  // WhatsApp story — newest at the bottom, where the viewer's open-at-newest scroll lands.
   // A plain const (not useMemo) mirrors filteredChats/filteredChannels above — statusesQuery.data
   // is already a stable, query-cached reference, so re-grouping on every render is cheap.
   const byStatusContact = new Map<string, ContactStatusGroup>();
@@ -1141,6 +1151,7 @@ export function Chats() {
       byStatusContact.set(item.contact.id, { contact: item.contact, items: [item], latest: item.timestamp });
     }
   }
+  for (const group of byStatusContact.values()) group.items.reverse();
   const groupedStatuses = Array.from(byStatusContact.values())
     .filter(
       g =>
@@ -1369,12 +1380,10 @@ export function Chats() {
               </div>
             )}
 
-            {/* Status list — the wwjs status@broadcast aggregate row, if present, followed by the
-                per-contact status groups read from the store. Not engine-gated: both engines now
-                have status content. */}
+            {/* Status list — per-contact status groups read from the 24h store. Not engine-gated:
+                both engines now have status content. */}
             {activeTab === 'status' && (
               <div className="chats-list">
-                {statusChats.map(renderChatRow)}
                 {statusesQuery.isLoading ? (
                   <div className="chats-list-loading">
                     <Loader2 className="animate-spin" size={24} />

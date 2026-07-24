@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { LessThan, Repository } from 'typeorm';
+import { LessThan, MoreThan, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { StatusUpdate } from './entities/status-update.entity';
 import type { IncomingStatus } from './incoming-status';
@@ -9,8 +9,9 @@ import type { Status } from '../../engine/interfaces/whatsapp-engine.interface';
 import { StorageService } from '../../common/storage/storage.service';
 import { createLogger } from '../../common/services/logger.service';
 
-/** A status/story lives for 24h from posting, matching WhatsApp's own expiry. */
-const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
+/** A status/story lives for 24h from posting, matching WhatsApp's own expiry. Exported for the
+ * session service's seed, which skips backfilling statuses that have already run out their TTL. */
+export const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
 /** How often the TTL purge sweeps expired rows. */
 const PURGE_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_MEDIA_MAX_BYTES = 10 * 1024 * 1024;
@@ -57,10 +58,15 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
     if (this.purgeTimer) clearInterval(this.purgeTimer);
   }
 
-  /** Insert a status row (idempotent on `(sessionId, waStatusId)`), persisting any attached media. */
-  async ingest(sessionId: string, s: IncomingStatus): Promise<StatusUpdate> {
+  /**
+   * Insert a status row (idempotent on `(sessionId, waStatusId)`), persisting any attached media.
+   * `created` tells the caller whether this call actually inserted the row — false for a duplicate
+   * delivery or a lost insert race — so a once-per-status side effect (the status.received webhook)
+   * doesn't fire again for a status consumers already saw.
+   */
+  async ingest(sessionId: string, s: IncomingStatus): Promise<{ row: StatusUpdate; created: boolean }> {
     const existing = await this.repository.findOne({ where: { sessionId, waStatusId: s.waStatusId } });
-    if (existing) return existing;
+    if (existing) return { row: existing, created: false };
 
     const row = new StatusUpdate();
     row.sessionId = sessionId;
@@ -77,13 +83,22 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
     await this.attachMedia(row, sessionId, s);
 
     try {
-      return await this.repository.save(row);
+      return { row: await this.repository.save(row), created: true };
     } catch (error) {
       // The unique (sessionId, waStatusId) index is the idempotency backstop for a concurrent ingest
       // of the same status racing past the findOne check above; the loser re-reads and returns the
       // row the winner just inserted instead of surfacing a constraint violation to the caller.
       const winner = await this.repository.findOne({ where: { sessionId, waStatusId: s.waStatusId } });
-      if (winner) return winner;
+      // This call's row was never saved, so the file attachMedia wrote for it (its own random key)
+      // is referenced by no row, and purgeExpired — which only sweeps expired rows' files — could
+      // never reap it. Delete it here or a lost race leaks one orphan per race. The guard skips the
+      // pathological case where the re-read row is this very insert (driver errored on a commit
+      // that landed): there the file IS the persisted row's media. deleteFile treats an
+      // already-missing file as success.
+      if (row.mediaPath && row.mediaPath !== winner?.mediaPath) {
+        await this.storageService.deleteFile(row.mediaPath).catch(() => undefined);
+      }
+      if (winner) return { row: winner, created: false };
       throw error;
     }
   }
@@ -123,13 +138,22 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
     row.omitReason = media.omitted ? 'engine_omitted' : 'over_cap';
   }
 
+  // Reads exclude already-expired rows: WhatsApp hides a status the moment its 24h are up, but the
+  // purge sweep only reaps rows every 15 minutes — without the filter an expired status would stay
+  // visible in the gap.
   async list(sessionId: string): Promise<Status[]> {
-    const rows = await this.repository.find({ where: { sessionId }, order: { postedAt: 'DESC' } });
+    const rows = await this.repository.find({
+      where: { sessionId, expiresAt: MoreThan(Date.now()) },
+      order: { postedAt: 'DESC' },
+    });
     return rows.map(row => this.toStatus(row));
   }
 
   async listByContact(sessionId: string, contactJid: string): Promise<Status[]> {
-    const rows = await this.repository.find({ where: { sessionId, contactJid }, order: { postedAt: 'DESC' } });
+    const rows = await this.repository.find({
+      where: { sessionId, contactJid, expiresAt: MoreThan(Date.now()) },
+      order: { postedAt: 'DESC' },
+    });
     return rows.map(row => this.toStatus(row));
   }
 
@@ -151,7 +175,9 @@ export class StatusStoreService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getMedia(sessionId: string, statusId: string): Promise<{ path: string; mimetype: string } | null> {
-    const row = await this.repository.findOne({ where: { sessionId, waStatusId: statusId } });
+    const row = await this.repository.findOne({
+      where: { sessionId, waStatusId: statusId, expiresAt: MoreThan(Date.now()) },
+    });
     if (!row || row.mediaOmitted || !row.mediaPath || !row.mediaMimetype) return null;
     return { path: row.mediaPath, mimetype: row.mediaMimetype };
   }

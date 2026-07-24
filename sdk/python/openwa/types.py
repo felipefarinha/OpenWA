@@ -590,9 +590,9 @@ class StatusResult(TypedDict, total=False):
 
 
 class SendTextStatusRequest(TypedDict, total=False):
-    # text and recipients required; backgroundColor (hex, e.g. #25D366) and font optional.
+    # text always required; recipients required on the Baileys engine only.
     text: str
-    # Recipient JIDs the status is addressed to (required by the server; empty -> 400).
+    # Recipient JIDs. Required on the Baileys engine (absent/empty -> 400); omit on whatsapp-web.js.
     recipients: list[str]
     backgroundColor: str
     font: int
@@ -610,7 +610,7 @@ class SendImageStatusRequest(TypedDict, total=False):
     """Server expects a nested ``{ image: { url|base64 } }`` body."""
 
     image: StatusMediaInput
-    # Recipient JIDs the status is addressed to (required by the server; empty -> 400).
+    # Recipient JIDs. Required on the Baileys engine (absent/empty -> 400); omit on whatsapp-web.js.
     recipients: list[str]
     caption: str
 
@@ -619,7 +619,7 @@ class SendVideoStatusRequest(TypedDict, total=False):
     """Server expects a nested ``{ video: { url|base64 } }`` body."""
 
     video: StatusMediaInput
-    # Recipient JIDs the status is addressed to (required by the server; empty -> 400).
+    # Recipient JIDs. Required on the Baileys engine (absent/empty -> 400); omit on whatsapp-web.js.
     recipients: list[str]
     caption: str
 

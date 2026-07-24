@@ -117,6 +117,29 @@ describe('configuration — plugin download cap is fail-safe', () => {
   });
 });
 
+describe('configuration — status media cap is fail-safe', () => {
+  const orig = process.env.STATUS_MEDIA_MAX_BYTES;
+  afterEach(() => {
+    if (orig === undefined) delete process.env.STATUS_MEDIA_MAX_BYTES;
+    else process.env.STATUS_MEDIA_MAX_BYTES = orig;
+  });
+
+  it('uses the env value when it is a valid positive integer', () => {
+    process.env.STATUS_MEDIA_MAX_BYTES = '2097152';
+    expect(configuration().status.mediaMaxBytes).toBe(2097152);
+  });
+
+  it('falls back to the 10 MiB default when unset, empty, non-numeric, or non-positive', () => {
+    delete process.env.STATUS_MEDIA_MAX_BYTES;
+    expect(configuration().status.mediaMaxBytes).toBe(10 * 1024 * 1024);
+    // A non-positive value must NOT disable the per-file cap — it falls back to the default.
+    for (const bad of ['', 'abc', '0', '-5']) {
+      process.env.STATUS_MEDIA_MAX_BYTES = bad;
+      expect(configuration().status.mediaMaxBytes).toBe(10 * 1024 * 1024);
+    }
+  });
+});
+
 describe('configuration search namespace', () => {
   // Save/restore the SEARCH_* env vars so a CI .env that sets them cannot flake the default-value
   // assertions below (mirrors the mutate-and-restore pattern used for PLUGIN_DOWNLOAD_MAX_BYTES etc.).

@@ -683,7 +683,12 @@ export const sessionApi = {
   getContactStatuses: (id: string) => request<{ statuses: StatusUpdate[] }>(`/sessions/${id}/status`),
   getStatusMediaBlob: (id: string, statusId: string) =>
     requestBlob(`/sessions/${id}/status/${encodeURIComponent(statusId)}/media`),
-  postTextStatus: (id: string, text: string, recipients: string[], extra?: { backgroundColor?: string; font?: number }) =>
+  postTextStatus: (
+    id: string,
+    text: string,
+    recipients?: string[],
+    extra?: { backgroundColor?: string; font?: number },
+  ) =>
     request(`/sessions/${id}/status/send-text`, {
       method: 'POST',
       body: JSON.stringify({ text, recipients, ...extra }),
@@ -691,7 +696,7 @@ export const sessionApi = {
   postImageStatus: (
     id: string,
     image: { url?: string; base64?: string; mimetype?: string },
-    recipients: string[],
+    recipients?: string[],
     caption?: string,
   ) =>
     request(`/sessions/${id}/status/send-image`, {

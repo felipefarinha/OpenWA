@@ -167,7 +167,8 @@ describe('SessionService', () => {
     };
 
     statusStore = {
-      ingest: jest.fn().mockResolvedValue({}),
+      // Default: nothing freshly inserted (callers only dispatch status.received on created=true).
+      ingest: jest.fn().mockResolvedValue({ row: {}, created: false }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -2210,17 +2211,20 @@ describe('SessionService', () => {
       expect(dispatchedEvents('message.received')).toHaveLength(0);
     });
 
-    it('dispatches status.received with the ingested row once ingest resolves', async () => {
+    it('dispatches status.received with the ingested row once ingest resolves with created=true', async () => {
       const callbacks = await startAndCaptureCallbacks();
       (statusStore.ingest as jest.Mock).mockResolvedValueOnce({
-        waStatusId: 'st1',
-        contactJid: '628111@c.us',
-        contactName: 'Alice',
-        type: 'text',
-        caption: 'hi',
-        mediaOmitted: false,
-        postedAt: 1000,
-        expiresAt: 1000 + 86400000,
+        created: true,
+        row: {
+          waStatusId: 'st1',
+          contactJid: '628111@c.us',
+          contactName: 'Alice',
+          type: 'text',
+          caption: 'hi',
+          mediaOmitted: false,
+          postedAt: 1000,
+          expiresAt: 1000 + 86400000,
+        },
       });
 
       callbacks.onMessage!(
@@ -2251,6 +2255,30 @@ describe('SessionService', () => {
           expiresAt: 1000 + 86400000,
         }),
       );
+    });
+
+    it('does not dispatch status.received for a duplicate delivery (ingest resolves created=false)', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      (statusStore.ingest as jest.Mock).mockResolvedValueOnce({
+        created: false,
+        row: { waStatusId: 'st1', contactJid: '628111@c.us' },
+      });
+
+      callbacks.onMessage!(
+        makeMessage({
+          id: 'st1',
+          from: 'status@broadcast',
+          to: 'me@c.us',
+          chatId: 'status@broadcast',
+          fromMe: false,
+          isStatusBroadcast: true,
+          author: '628111@c.us',
+          kind: 'status',
+        }),
+      );
+      await flush();
+
+      expect(dispatchedEvents('status.received')).toHaveLength(0);
     });
 
     it('skips persist and dispatch for ephemeral messages when STORE_EPHEMERAL_MESSAGES=false', async () => {
@@ -2604,6 +2632,7 @@ describe('SessionService', () => {
 
     it('seeds the status store from the status-broadcast chat history when the engine reports ready', async () => {
       const callbacks = await startAndCaptureCallbacks();
+      const nowSec = Math.floor(Date.now() / 1000);
       mockEngine.getChatHistory.mockResolvedValue([
         makeMessage({
           id: 'st-a',
@@ -2614,7 +2643,7 @@ describe('SessionService', () => {
           kind: 'status',
           type: 'text',
           body: 'hi',
-          timestamp: 1700000000,
+          timestamp: nowSec,
           contact: { id: '628111@c.us', name: 'Alice', pushName: 'Ali' },
         }),
         makeMessage({
@@ -2626,7 +2655,7 @@ describe('SessionService', () => {
           kind: 'status',
           type: 'image',
           body: '',
-          timestamp: 1700000001,
+          timestamp: nowSec + 1,
         }),
         // Poster resolves to the shared pseudo-JID → buildIncomingStatus returns null → never ingested.
         makeMessage({
@@ -2637,6 +2666,7 @@ describe('SessionService', () => {
           author: 'status@broadcast',
           kind: 'status',
           type: 'text',
+          timestamp: nowSec + 2,
         }),
       ]);
       // st-b's message carries no cached contact name; the seed resolves it via getContactById.
@@ -2674,7 +2704,7 @@ describe('SessionService', () => {
           contactPushName: 'Ali',
           type: 'text',
           caption: 'hi',
-          postedAt: 1700000000000,
+          postedAt: nowSec * 1000,
         }),
       );
       // st-b had no cached name, so the seed backfilled it from getContactById.
@@ -2707,7 +2737,7 @@ describe('SessionService', () => {
           kind: 'status',
           type: 'image',
           body: '',
-          timestamp: 1700000002,
+          timestamp: Math.floor(Date.now() / 1000),
           media,
         }),
       ]);
@@ -2718,6 +2748,73 @@ describe('SessionService', () => {
       expect(statusStore.ingest).toHaveBeenCalledWith(
         'sess-uuid-1',
         expect.objectContaining({ waStatusId: 'st-c', media }),
+      );
+    });
+
+    it('skips the account’s own (fromMe) statuses and statuses older than 24h when seeding', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      const nowSec = Math.floor(Date.now() / 1000);
+      mockEngine.getChatHistory.mockResolvedValue([
+        // Own active status echoed in the broadcast chat — mirrors the live path's fromMe drop.
+        makeMessage({
+          id: 'st-own',
+          from: 'me@c.us',
+          chatId: 'status@broadcast',
+          isStatusBroadcast: true,
+          fromMe: true,
+          kind: 'status',
+          type: 'text',
+          timestamp: nowSec,
+        }),
+        // 25 hours old — past the 24h TTL, gone from WhatsApp clients already.
+        makeMessage({
+          id: 'st-old',
+          from: 'status@broadcast',
+          chatId: 'status@broadcast',
+          isStatusBroadcast: true,
+          author: '628111@c.us',
+          kind: 'status',
+          type: 'text',
+          timestamp: nowSec - 25 * 60 * 60,
+        }),
+      ]);
+
+      callbacks.onReady!('628123', 'Alice');
+      await flush();
+
+      expect(statusStore.ingest).not.toHaveBeenCalled();
+    });
+
+    it('keeps seeding the remaining statuses when one item’s ingest fails', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      const nowSec = Math.floor(Date.now() / 1000);
+      const seedItem = (id: string, author: string) =>
+        makeMessage({
+          id,
+          from: 'status@broadcast',
+          chatId: 'status@broadcast',
+          isStatusBroadcast: true,
+          author,
+          kind: 'status',
+          type: 'text',
+          timestamp: nowSec,
+        });
+      mockEngine.getChatHistory.mockResolvedValue([
+        seedItem('st-fail', '628111@c.us'),
+        seedItem('st-ok', '628222@c.us'),
+      ]);
+      (statusStore.ingest as jest.Mock)
+        .mockRejectedValueOnce(new Error('database is locked'))
+        .mockResolvedValueOnce({ row: {}, created: true });
+
+      callbacks.onReady!('628123', 'Alice');
+      await flush();
+
+      expect(statusStore.ingest).toHaveBeenCalledTimes(2);
+      expect(statusStore.ingest).toHaveBeenNthCalledWith(
+        2,
+        'sess-uuid-1',
+        expect.objectContaining({ waStatusId: 'st-ok' }),
       );
     });
 

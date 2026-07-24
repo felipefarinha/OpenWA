@@ -3,7 +3,6 @@ import {
   IsOptional,
   ValidateNested,
   IsArray,
-  ArrayMinSize,
   ArrayMaxSize,
   IsDefined,
   IsNotEmpty,
@@ -52,22 +51,22 @@ export class SendImageStatusDto {
   @MaxLength(1024)
   caption?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Recipient JIDs (1–256), @c.us or @lid. Honored on the Baileys engine only: whatsapp-web.js ignores ' +
-      "this allow-list and broadcasts to the account's status-privacy audience.",
+      'Recipient JIDs (0–256), @c.us or @lid. Required on the Baileys engine (it posts to exactly this ' +
+      "allow-list); ignored by whatsapp-web.js, which broadcasts to the account's status-privacy " +
+      'audience — omit it there.',
     type: String,
     isArray: true,
     example: ['628123456789@c.us'],
-    minItems: 1,
     maxItems: 256,
   })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(256)
   @IsString({ each: true })
   @Matches(/^\d+@(c\.us|lid)$/, { each: true, message: 'Invalid recipient JID' })
-  recipients: string[];
+  recipients?: string[];
 }
 
 export class SendVideoStatusDto {
@@ -83,20 +82,20 @@ export class SendVideoStatusDto {
   @MaxLength(1024)
   caption?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Recipient JIDs (1–256), @c.us or @lid. Honored on the Baileys engine only: whatsapp-web.js ignores ' +
-      "this allow-list and broadcasts to the account's status-privacy audience.",
+      'Recipient JIDs (0–256), @c.us or @lid. Required on the Baileys engine (it posts to exactly this ' +
+      "allow-list); ignored by whatsapp-web.js, which broadcasts to the account's status-privacy " +
+      'audience — omit it there.',
     type: String,
     isArray: true,
     example: ['628123456789@c.us'],
-    minItems: 1,
     maxItems: 256,
   })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(256)
   @IsString({ each: true })
   @Matches(/^\d+@(c\.us|lid)$/, { each: true, message: 'Invalid recipient JID' })
-  recipients: string[];
+  recipients?: string[];
 }

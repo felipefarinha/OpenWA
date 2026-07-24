@@ -199,6 +199,19 @@ describe('buildIncomingMessageFromBaileys', () => {
     expect(r.isStatusBroadcast).toBe(true);
   });
 
+  it('exposes the status poster from participant as author (status@broadcast is not a group)', () => {
+    const r = buildIncomingMessageFromBaileys({
+      ...base,
+      remoteJid: 'status@broadcast',
+      participant: '628111@s.whatsapp.net',
+    });
+    expect(r.isStatusBroadcast).toBe(true);
+    expect(r.isGroup).toBe(false);
+    // Without this, buildIncomingStatus can only resolve the poster to the status@broadcast
+    // pseudo-JID itself and drops the status entirely.
+    expect(r.author).toBe('628111@s.whatsapp.net');
+  });
+
   it('carries the push name onto contact when present', () => {
     const r = buildIncomingMessageFromBaileys({ ...base, pushName: 'Alice' });
     expect(r.contact).toEqual({ pushName: 'Alice' });

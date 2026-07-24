@@ -612,8 +612,8 @@ export interface StatusResult {
 
 export interface SendTextStatusRequest {
   text: string;
-  /** Recipient JIDs the status is addressed to (required by the server; empty → 400). */
-  recipients: string[];
+  /** Recipient JIDs. Required on the Baileys engine (absent/empty → 400); omit on whatsapp-web.js, which broadcasts instead. */
+  recipients?: string[];
   /** Hex background color, e.g. `#25D366`. */
   backgroundColor?: string;
   /** Font index supported by WhatsApp status. */
@@ -631,16 +631,16 @@ export interface StatusMediaInput {
 /** Server expects a nested `{ image: { url|base64 } }` body, not flat media fields. */
 export interface SendImageStatusRequest {
   image: StatusMediaInput;
-  /** Recipient JIDs the status is addressed to (required by the server; empty → 400). */
-  recipients: string[];
+  /** Recipient JIDs. Required on the Baileys engine (absent/empty → 400); omit on whatsapp-web.js, which broadcasts instead. */
+  recipients?: string[];
   caption?: string;
 }
 
 /** Server expects a nested `{ video: { url|base64 } }` body, not flat media fields. */
 export interface SendVideoStatusRequest {
   video: StatusMediaInput;
-  /** Recipient JIDs the status is addressed to (required by the server; empty → 400). */
-  recipients: string[];
+  /** Recipient JIDs. Required on the Baileys engine (absent/empty → 400); omit on whatsapp-web.js, which broadcasts instead. */
+  recipients?: string[];
   caption?: string;
 }
 

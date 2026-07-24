@@ -42,26 +42,28 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
     fs.rmSync(baseDir, { recursive: true, force: true });
   });
 
-  it('ingest writes a text row with expiresAt = postedAt + 24h', async () => {
-    const row = await service.ingest('sess', {
+  it('ingest writes a text row with expiresAt = postedAt + 24h, flagged as created', async () => {
+    const postedAt = Date.now();
+    const { row, created } = await service.ingest('sess', {
       waStatusId: 'w1',
       contactJid: '628111@c.us',
       type: 'text',
       caption: 'hi',
-      postedAt: 1000,
+      postedAt,
     });
-    expect(row.expiresAt).toBe(1000 + 24 * 60 * 60 * 1000);
+    expect(created).toBe(true);
+    expect(row.expiresAt).toBe(postedAt + 24 * 60 * 60 * 1000);
     expect(row.mediaOmitted).toBe(false);
     expect(row.mediaPath).toBeFalsy();
   });
 
   it('ingest persists media to a file under the cap and records mediaPath', async () => {
-    const row = await service.ingest('sess', {
+    const { row } = await service.ingest('sess', {
       waStatusId: 'w2',
       contactJid: '628111@c.us',
       type: 'image',
       media: { mimetype: 'image/jpeg', data: Buffer.from('x').toString('base64') },
-      postedAt: 2000,
+      postedAt: Date.now(),
     });
     expect(row.mediaPath).toBeTruthy();
     expect(row.mediaMimetype).toBe('image/jpeg');
@@ -72,12 +74,12 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
   });
 
   it('ingest marks media omitted when the engine already omitted it', async () => {
-    const row = await service.ingest('sess', {
+    const { row } = await service.ingest('sess', {
       waStatusId: 'w3',
       contactJid: '628111@c.us',
       type: 'image',
       media: { mimetype: 'image/jpeg', omitted: true, sizeBytes: 99 },
-      postedAt: 3000,
+      postedAt: Date.now(),
     });
     expect(row.mediaOmitted).toBe(true);
     expect(row.omitReason).toBe('engine_omitted');
@@ -85,19 +87,19 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
   });
 
   it('ingest marks media omitted when sizeBytes exceeds STATUS_MEDIA_MAX_BYTES', async () => {
-    const row = await service.ingest('sess', {
+    const { row } = await service.ingest('sess', {
       waStatusId: 'w4',
       contactJid: '628111@c.us',
       type: 'image',
       media: { mimetype: 'image/jpeg', data: '...', sizeBytes: 999_999_999 },
-      postedAt: 4000,
+      postedAt: Date.now(),
     });
     expect(row.mediaOmitted).toBe(true);
     expect(row.omitReason).toBe('over_cap');
     expect(row.mediaPath).toBeFalsy();
   });
 
-  it('ingest is idempotent on (sessionId, waStatusId)', async () => {
+  it('ingest is idempotent on (sessionId, waStatusId), flagged as not created on the duplicate', async () => {
     await service.ingest('sess', { waStatusId: 'dup', contactJid: '628111@c.us', type: 'text', postedAt: 1 });
     const second = await service.ingest('sess', {
       waStatusId: 'dup',
@@ -107,7 +109,8 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
     });
     const rows = await repository.find({ where: { sessionId: 'sess', waStatusId: 'dup' } });
     expect(rows).toHaveLength(1);
-    expect(second.id).toBe(rows[0].id);
+    expect(second.row.id).toBe(rows[0].id);
+    expect(second.created).toBe(false);
   });
 
   it('list maps rows to the Status shape newest-first, media path -> mediaUrl endpoint', async () => {
@@ -115,7 +118,7 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
     expect(out[0].contact.id).toBe('628111@c.us');
     expect(out[0].timestamp).toBeInstanceOf(Date);
     expect(out[0].expiresAt).toBeInstanceOf(Date);
-    // Sorted newest (highest postedAt) first: w4 (4000) precedes w1 (1000).
+    // Sorted newest (highest postedAt) first.
     const postedOrder = out.map(s => s.timestamp.getTime());
     expect(postedOrder).toEqual([...postedOrder].sort((a, b) => b - a));
 
@@ -127,8 +130,30 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
     expect(textOnly.mediaUrl).toBeUndefined();
   });
 
+  it('list and listByContact exclude already-expired rows (the purge sweep only runs every 15 min)', async () => {
+    await service.ingest('sess', {
+      waStatusId: 'stale',
+      contactJid: '628111@c.us',
+      type: 'text',
+      postedAt: Date.now() - 25 * 60 * 60 * 1000, // 25h old — past the 24h TTL
+    });
+    expect((await service.list('sess')).map(s => s.id)).not.toContain('stale');
+    expect((await service.listByContact('sess', '628111@c.us')).map(s => s.id)).not.toContain('stale');
+  });
+
+  it('getMedia treats an expired row as absent (404, matching "not found or expired")', async () => {
+    await service.ingest('sess', {
+      waStatusId: 'stale-media',
+      contactJid: '628111@c.us',
+      type: 'image',
+      media: { mimetype: 'image/jpeg', data: Buffer.from('old').toString('base64') },
+      postedAt: Date.now() - 25 * 60 * 60 * 1000,
+    });
+    expect(await service.getMedia('sess', 'stale-media')).toBeNull();
+  });
+
   it('listByContact filters to only that contact', async () => {
-    await service.ingest('sess', { waStatusId: 'w5', contactJid: '628222@c.us', type: 'text', postedAt: 6000 });
+    await service.ingest('sess', { waStatusId: 'w5', contactJid: '628222@c.us', type: 'text', postedAt: Date.now() });
     const out = await service.listByContact('sess', '628222@c.us');
     expect(out).toHaveLength(1);
     expect(out[0].contact.id).toBe('628222@c.us');
@@ -157,7 +182,7 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
       putFile: jest.fn().mockRejectedValue(new Error('disk full')),
     } as unknown as StorageService;
     const failingService = new StatusStoreService(repository, failingStorage, fakeConfigService());
-    const row = await failingService.ingest('sess', {
+    const { row } = await failingService.ingest('sess', {
       waStatusId: 'w6',
       contactJid: '628111@c.us',
       type: 'image',
@@ -175,7 +200,7 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
       storageService,
       fakeConfigService({ 'status.mediaMaxBytes': 0 }),
     );
-    const row = await strictService.ingest('sess', {
+    const { row } = await strictService.ingest('sess', {
       waStatusId: 'w7',
       contactJid: '628111@c.us',
       type: 'image',
@@ -184,6 +209,94 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
     });
     expect(row.mediaOmitted).toBe(true);
     expect(row.omitReason).toBe('over_cap');
+  });
+});
+
+describe('StatusStoreService ingest race (unique-constraint loser)', () => {
+  let baseDir: string;
+  let storageService: StorageService;
+
+  beforeEach(() => {
+    baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'owa-status-race-'));
+    storageService = makeStorageService(path.join(baseDir, 'media'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  const mediaDir = (): string[] => fs.readdirSync(path.join(baseDir, 'media', 'statuses', 'sess'));
+
+  it('reaps the media file it wrote when a concurrent ingest wins the unique constraint', async () => {
+    // The winner committed its own media file; the loser must not leave a second, orphaned one.
+    fs.mkdirSync(path.join(baseDir, 'media', 'statuses', 'sess'), { recursive: true });
+    fs.writeFileSync(path.join(baseDir, 'media', 'statuses', 'sess', 'winner.jpg'), 'winner');
+    const winner = new StatusUpdate();
+    winner.mediaPath = 'statuses/sess/winner.jpg';
+    // First findOne (top of ingest) sees nothing; the post-save-failure re-read returns the winner.
+    const repo = {
+      findOne: jest.fn().mockResolvedValueOnce(null).mockResolvedValue(winner),
+      save: jest.fn().mockRejectedValue(new Error('UNIQUE constraint failed')),
+    } as unknown as Repository<StatusUpdate>;
+    const service = new StatusStoreService(repo, storageService, fakeConfigService());
+
+    const { row, created } = await service.ingest('sess', {
+      waStatusId: 'raced',
+      contactJid: '628111@c.us',
+      type: 'image',
+      media: { mimetype: 'image/jpeg', data: Buffer.from('loser').toString('base64') },
+      postedAt: 1000,
+    });
+
+    expect(row).toBe(winner);
+    expect(created).toBe(false);
+    expect(mediaDir()).toEqual(['winner.jpg']);
+  });
+
+  it('reaps the file it wrote when the save fails with no winner row, then rethrows', async () => {
+    const repo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      save: jest.fn().mockRejectedValue(new Error('database is locked')),
+    } as unknown as Repository<StatusUpdate>;
+    const service = new StatusStoreService(repo, storageService, fakeConfigService());
+
+    await expect(
+      service.ingest('sess', {
+        waStatusId: 'raced',
+        contactJid: '628111@c.us',
+        type: 'image',
+        media: { mimetype: 'image/jpeg', data: Buffer.from('loser').toString('base64') },
+        postedAt: 1000,
+      }),
+    ).rejects.toThrow('database is locked');
+
+    expect(mediaDir()).toHaveLength(0);
+  });
+
+  it('keeps the file when the re-read row is this very insert (driver errored on a commit that landed)', async () => {
+    const repo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        // The row that "landed" references exactly the file this ingest just wrote.
+        .mockImplementation(() => {
+          const selfRow = new StatusUpdate();
+          selfRow.mediaPath = `statuses/sess/${mediaDir()[0]}`;
+          return Promise.resolve(selfRow);
+        }),
+      save: jest.fn().mockRejectedValue(new Error('driver reported failure after commit')),
+    } as unknown as Repository<StatusUpdate>;
+    const service = new StatusStoreService(repo, storageService, fakeConfigService());
+
+    await service.ingest('sess', {
+      waStatusId: 'raced',
+      contactJid: '628111@c.us',
+      type: 'image',
+      media: { mimetype: 'image/jpeg', data: Buffer.from('self').toString('base64') },
+      postedAt: 1000,
+    });
+
+    expect(mediaDir()).toHaveLength(1);
   });
 });
 
@@ -208,14 +321,16 @@ describe('StatusStoreService.purgeExpired', () => {
     fs.rmSync(baseDir, { recursive: true, force: true });
   });
 
-  const ingestWithMedia = (waStatusId: string, postedAt: number): Promise<StatusUpdate> =>
-    service.ingest('sess', {
-      waStatusId,
-      contactJid: '628111@c.us',
-      type: 'image',
-      media: { mimetype: 'image/jpeg', data: Buffer.from(waStatusId).toString('base64') },
-      postedAt,
-    });
+  const ingestWithMedia = async (waStatusId: string, postedAt: number): Promise<StatusUpdate> =>
+    (
+      await service.ingest('sess', {
+        waStatusId,
+        contactJid: '628111@c.us',
+        type: 'image',
+        media: { mimetype: 'image/jpeg', data: Buffer.from(waStatusId).toString('base64') },
+        postedAt,
+      })
+    ).row;
 
   it('deletes expired rows and their media files, keeps live ones', async () => {
     const expiredWithMedia = await ingestWithMedia('expired-media', 1000);

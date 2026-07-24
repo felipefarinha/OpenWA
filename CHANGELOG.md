@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **New opt-in `status.received` webhook.** Subscribe a webhook to `status.received` to be notified
   when a contact posts a status; the payload carries the contact, type, caption, and media flags (no
-  media blob — fetch it from the media endpoint). Off by default.
+  media blob — fetch it from the media endpoint). Off by default, though a webhook subscribed to `*`
+  (all events) receives it automatically.
 
 - **The dashboard Status tab is now functional.** It lists contacts with active statuses, opens a
   read-only viewer for a contact's updates (image and video), and can post a text or image status,
@@ -27,7 +28,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   incoming message with the sender's name — coloured per participant and shown once per consecutive
   run — so a thread is no longer an anonymous wall of text. One-to-one chats are unchanged.
 
+### Changed
+
+- **Status `recipients` is now optional on the post-status endpoints.** `POST
+  /sessions/:id/status/send-text`, `send-image`, and `send-video` accept an omitted or empty
+  `recipients` list. The Baileys engine still requires it — it posts to exactly that allow-list, so
+  an absent/empty list now 400s there with a clear message — while whatsapp-web.js, which broadcasts
+  to the account's status-privacy audience and always ignored the field, no longer needs a
+  placeholder recipient to pass validation.
+
 ### Fixed
+
+- **Contact statuses now actually ingest on the Baileys engine.** The message mapper only lifted the
+  sender's `participant` into `author` for group chats, so a status broadcast — whose chat is the
+  `status@broadcast` pseudo-JID, not a group — lost its poster, failed poster resolution, and was
+  silently dropped before reaching the 24h store. On a Baileys session the status list stayed empty
+  and `status.received` never fired. The poster is now mapped for status broadcasts too.
+
+- **`status.received` no longer fires twice for the same status.** The webhook now dispatches only
+  when ingest actually inserts a new row; a duplicate delivery (an engine re-emit after a
+  reconnect) or a lost insert race resolves the pre-existing row without re-notifying consumers.
+
+- **The status seed skips own and already-expired statuses, and survives a bad item.** The
+  connect-time backfill no longer ingests the account's own active statuses as if a contact had
+  posted them, skips statuses already past their 24-hour TTL, and one item's ingest failure no
+  longer aborts the rest of the backfill.
+
+- **Expired statuses disappear from the API immediately instead of at the next purge.** The status
+  list, per-contact list, and media endpoints now filter out rows past their 24-hour expiry rather
+  than serving them until the 15-minute purge sweep reaps them.
+
+- **Status media is served with a sanitized Content-Type.** The stored mimetype comes from
+  sender-controlled message metadata; anything outside `image/*` / `video/*` is now served as
+  `application/octet-stream` with `X-Content-Type-Options: nosniff`, so the media endpoint can't be
+  turned into active content on the API origin.
+
+- **The status viewer plays a contact's story in the right order.** Items were rendered newest-first
+  while the pane scrolls to the bottom on open, so the viewer opened on the oldest status and read
+  backwards; items are now oldest-first with the newest at the scroll position. Composing is also
+  blocked until the engine type has loaded, so a Baileys post can no longer go out without
+  recipients.
 
 - **`npm run dev` no longer crashes on the second launch with `Cannot find module '.../dist/main'`.**
   The TypeScript 6 upgrade moved the incremental build cache (`tsbuildinfo`) out of `dist/` to the
@@ -44,6 +84,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no listener, becoming a fatal `uncaughtException` that took every WhatsApp session offline (#887).
   `withSafeFetch` now cancels unread bodies before tearing down the connection; callers that already
   stream the body (media / plugin downloads) are unchanged.
+
+- **Expired status media now 404s instead of 500ing when the purge races a stream.** A `GET
+  /sessions/:id/status/:statusId/media` landing in the sub-second window where the 24h purge deletes
+  the backing file mid-request previously surfaced a generic 500; a missing file now maps to the
+  same 404 as an unknown or omitted status.
+
+- **A lost status-ingest race no longer leaks an orphaned media file.** When two concurrent ingests
+  of the same status (e.g. the connect-time seed racing a live event) both wrote a media file before
+  the unique constraint settled the winner, the loser's file was referenced by no row and could
+  never be purged. The loser now deletes its own file before returning the winner's row.
+
+- **Status tab polish.** The retired Phase-1 aggregate status row no longer stacks above the
+  per-contact list; the statuses query waits for the Status tab instead of firing on every session
+  select; and picking an image file then immediately switching to a URL no longer lets the
+  late-arriving file bytes override the URL.
 
 ## [0.10.8] - 2026-07-23
 

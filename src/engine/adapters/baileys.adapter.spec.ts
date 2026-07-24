@@ -111,6 +111,7 @@ import { CallNotFoundError } from '../../common/errors/call-not-found.error';
 import { EngineRefusedError } from '../../common/errors/engine-refused.error';
 import { InvalidInviteCodeError } from '../../common/errors/invalid-invite-code.error';
 import { ChannelNotFoundError } from '../../common/errors/channel-not-found.error';
+import { BadRequestException } from '@nestjs/common';
 import { loadRemoteMediaBuffer } from '../../common/media/load-remote-media';
 
 const fakeStore = {
@@ -909,6 +910,31 @@ describe('BaileysAdapter inbound fan-out', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const msg = onMessage.mock.calls[0][0] as { id: string; body: string; type: string; fromMe: boolean };
     expect(msg).toMatchObject({ id: 'IN1', body: 'hi there', type: 'text', fromMe: false });
+  });
+
+  it('routes a status broadcast to onMessage with the poster in author (so the status store can ingest it)', async () => {
+    const onMessage = jest.fn();
+    const adapter = newAdapter();
+    await adapter.initialize({ onMessage });
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          // A contact's status: remoteJid is the shared channel, the poster is in participant.
+          key: { remoteJid: 'status@broadcast', participant: '628111@s.whatsapp.net', fromMe: false, id: 'ST1' },
+          message: { conversation: 'my status' },
+          messageTimestamp: 1700000002,
+          pushName: 'Alice',
+        },
+      ],
+    });
+    await new Promise(r => setImmediate(r));
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const msg = onMessage.mock.calls[0][0] as { id: string; author?: string; isStatusBroadcast: boolean };
+    // Regression lock: buildIncomingStatus needs author to resolve the poster — without it the
+    // status resolves to the status@broadcast pseudo-JID and is dropped before ingest.
+    expect(msg).toMatchObject({ id: 'ST1', isStatusBroadcast: true, author: '628111@c.us' });
   });
 
   it('extracts coordinates from an ephemeral (disappearing) location message', async () => {
@@ -3209,6 +3235,13 @@ describe('BaileysAdapter status posting', () => {
       { video: Buffer.from('AAAA', 'base64'), caption: undefined, mimetype: 'video/mp4' },
       { statusJidList: ['628111@s.whatsapp.net'], backgroundColor: undefined, font: undefined },
     );
+  });
+
+  it('postStatus rejects an absent/empty recipients list with a 400 (Baileys posts to exactly the allow-list)', async () => {
+    const adapter = await ready();
+    await expect(adapter.postTextStatus('hello', {})).rejects.toBeInstanceOf(BadRequestException);
+    await expect(adapter.postTextStatus('hello', { recipients: [] })).rejects.toBeInstanceOf(BadRequestException);
+    expect(fakeSock.sendMessage).not.toHaveBeenCalled();
   });
 
   it('deleteStatus revokes by constructing the key from statusId (no store lookup)', async () => {

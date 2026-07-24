@@ -28,7 +28,7 @@ import { userPart } from '../../engine/identity/wa-id';
 import { paginate, ListOptions, resolveListWindow } from '../../common/utils/paginate';
 import { isUniqueConstraintError } from '../../common/utils/unique-constraint.util';
 import { resolveFeatureFlags } from '../../config/feature-flags';
-import { StatusStoreService } from '../status-store/status-store.service';
+import { STATUS_TTL_MS, StatusStoreService } from '../status-store/status-store.service';
 import { buildIncomingStatus } from '../status-store/incoming-status';
 import type { StatusUpdate } from '../status-store/entities/status-update.entity';
 import {
@@ -693,14 +693,29 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
         return resolved;
       };
       for (const msg of messages) {
-        const status = buildIncomingStatus(msg);
-        if (!status) continue;
-        if (!status.contactName && !status.contactPushName) {
-          const poster = await resolvePoster(status.contactJid);
-          status.contactName = poster.name;
-          status.contactPushName = poster.pushName;
+        try {
+          // Mirrors the live path's own-send drop: the broadcast chat's history also contains the
+          // account's OWN active statuses, which must not come back as if a contact had posted them.
+          if (msg.fromMe) continue;
+          // A status whose 24h already ran out is hidden by WhatsApp and would only live until the
+          // next purge sweep — don't backfill it (its media was downloaded by getChatHistory
+          // regardless; this just skips the row).
+          if (msg.timestamp * 1000 + STATUS_TTL_MS <= Date.now()) continue;
+          const status = buildIncomingStatus(msg);
+          if (!status) continue;
+          if (!status.contactName && !status.contactPushName) {
+            const poster = await resolvePoster(status.contactJid);
+            status.contactName = poster.name;
+            status.contactPushName = poster.pushName;
+          }
+          await this.statusStore.ingest(sessionId, status);
+        } catch (itemErr) {
+          // One bad item must not abort the whole backfill.
+          this.logger.warn('Status seed item skipped', {
+            sessionId,
+            error: itemErr instanceof Error ? itemErr.message : String(itemErr),
+          });
         }
-        await this.statusStore.ingest(sessionId, status);
       }
     } catch (err) {
       this.logger.debug('Status seed skipped', {
@@ -937,7 +952,12 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
           if (status) {
             void this.statusStore
               .ingest(id, status)
-              .then(row => this.dispatchStatusReceived(id, row))
+              // Dispatch only on a fresh insert: ingest also resolves with the pre-existing row
+              // for a duplicate delivery (or the winner's row after a lost insert race), and the
+              // webhook must fire once per status, not once per (re)delivery.
+              .then(({ row, created }) => {
+                if (created) this.dispatchStatusReceived(id, row);
+              })
               .catch(err =>
                 this.logger.warn('Status ingest failed', {
                   sessionId: id,

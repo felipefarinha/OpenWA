@@ -161,8 +161,8 @@ export interface BaileysIncomingFields {
 /**
  * Build a neutral {@link IncomingMessage} from extracted Baileys fields. The chat is always
  * `remoteJid` (Baileys reports the conversation directly); `fromMe` only flips from/to. The group
- * sender lives in `participant` (exposed as `author`), matching the wwjs convention where `from`
- * is the group JID.
+ * sender — and likewise the poster of a status broadcast — lives in `participant` (exposed as
+ * `author`), matching the wwjs convention where `from` is the group JID / broadcast channel.
  */
 export function buildIncomingMessageFromBaileys(
   fields: BaileysIncomingFields,
@@ -191,7 +191,11 @@ export function buildIncomingMessageFromBaileys(
     isStatusBroadcast,
   };
 
-  if (isGroup && fields.participant) {
+  // The sender behind a group message — or the poster behind a status broadcast — lives in
+  // `participant` (exposed as `author`), matching the wwjs convention where `from` is the group JID
+  // (or the shared status@broadcast channel). Without the status arm, buildIncomingStatus can only
+  // resolve the poster to the pseudo-JID itself and drops every Baileys status.
+  if ((isGroup || isStatusBroadcast) && fields.participant) {
     incoming.author = normalizeJid(fields.participant);
   }
 

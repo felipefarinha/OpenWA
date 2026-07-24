@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException, PayloadTooLargeException } from
 import { StatusService } from './status.service';
 import { SessionService } from '../session/session.service';
 import { StatusStoreService } from '../status-store/status-store.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { HookManager } from '../../core/hooks';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -19,10 +20,12 @@ describe('StatusService media validation and selection', () => {
   const passThrough = (_event: string, data: unknown) => Promise.resolve({ continue: true, data });
   const hookManager = { execute: jest.fn(passThrough) };
   const store = { list: jest.fn(), listByContact: jest.fn(), getMedia: jest.fn() };
+  const storageService = { getFile: jest.fn() };
   const service = new StatusService(
     sessionService as unknown as SessionService,
     hookManager as unknown as HookManager,
     store as unknown as StatusStoreService,
+    storageService as unknown as StorageService,
   );
 
   beforeEach(() => {
@@ -59,13 +62,41 @@ describe('StatusService media validation and selection', () => {
       await expect(service.getStatusMedia('sess', 'w1')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('returns the stored path and mimetype', async () => {
+    it('returns the media bytes and mimetype', async () => {
       store.getMedia.mockResolvedValue({ path: 'statuses/sess/x.jpg', mimetype: 'image/jpeg' });
+      storageService.getFile.mockResolvedValue(Buffer.from('x'));
 
       const media = await service.getStatusMedia('sess', 'w1');
 
-      expect(media).toEqual({ path: 'statuses/sess/x.jpg', mimetype: 'image/jpeg' });
+      expect(media).toEqual({ buffer: Buffer.from('x'), mimetype: 'image/jpeg' });
       expect(store.getMedia).toHaveBeenCalledWith('sess', 'w1');
+      expect(storageService.getFile).toHaveBeenCalledWith('statuses/sess/x.jpg');
+    });
+
+    it('maps an ENOENT from the file read to NotFoundException (purge raced the request), not a 500', async () => {
+      store.getMedia.mockResolvedValue({ path: 'statuses/sess/gone.jpg', mimetype: 'image/jpeg' });
+      const enoent = Object.assign(new Error('no such file or directory'), { code: 'ENOENT' });
+      storageService.getFile.mockRejectedValue(enoent);
+
+      await expect(service.getStatusMedia('sess', 'w1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('rethrows non-ENOENT storage errors unchanged', async () => {
+      store.getMedia.mockResolvedValue({ path: 'statuses/sess/x.jpg', mimetype: 'image/jpeg' });
+      storageService.getFile.mockRejectedValue(new Error('S3 unavailable'));
+
+      await expect(service.getStatusMedia('sess', 'w1')).rejects.toThrow('S3 unavailable');
+    });
+
+    it('serves a sender-declared non-image/video mimetype as inert application/octet-stream', async () => {
+      // The stored mimetype comes from the sender's message metadata — never trust it as a
+      // Content-Type or the endpoint could serve active content (e.g. text/html) on the API origin.
+      store.getMedia.mockResolvedValue({ path: 'statuses/sess/x.bin', mimetype: 'text/html' });
+      storageService.getFile.mockResolvedValue(Buffer.from('<script>'));
+
+      const media = await service.getStatusMedia('sess', 'w1');
+
+      expect(media.mimetype).toBe('application/octet-stream');
     });
   });
 

@@ -11,14 +11,14 @@ describe('SendImageStatusDto recipients validation', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('rejects missing recipients', async () => {
+  it('accepts missing recipients (optional — whatsapp-web.js broadcasts without them)', async () => {
     const errors = await validate(plainToInstance(SendImageStatusDto, { image: valid.image }));
-    expect(errors.some(e => e.property === 'recipients')).toBe(true);
+    expect(errors).toHaveLength(0);
   });
 
-  it('rejects an empty recipients array (-> 400)', async () => {
+  it('accepts an empty recipients array', async () => {
     const errors = await validate(plainToInstance(SendImageStatusDto, { image: valid.image, recipients: [] }));
-    expect(errors.some(e => e.property === 'recipients')).toBe(true);
+    expect(errors).toHaveLength(0);
   });
 
   it('rejects non-string entries', async () => {
@@ -58,14 +58,14 @@ describe('SendVideoStatusDto recipients validation', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('rejects missing recipients', async () => {
+  it('accepts missing recipients (optional — whatsapp-web.js broadcasts without them)', async () => {
     const errors = await validate(plainToInstance(SendVideoStatusDto, { video: valid.video }));
-    expect(errors.some(e => e.property === 'recipients')).toBe(true);
+    expect(errors).toHaveLength(0);
   });
 
-  it('rejects an empty recipients array (-> 400)', async () => {
+  it('accepts an empty recipients array', async () => {
     const errors = await validate(plainToInstance(SendVideoStatusDto, { video: valid.video, recipients: [] }));
-    expect(errors.some(e => e.property === 'recipients')).toBe(true);
+    expect(errors).toHaveLength(0);
   });
 
   it('rejects non-string entries', async () => {

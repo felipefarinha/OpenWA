@@ -46,6 +46,7 @@ import {
   StatusPostOptions,
 } from '../interfaces/whatsapp-engine.interface';
 import { loadRemoteMediaBuffer } from '../../common/media/load-remote-media';
+import { BadRequestException } from '@nestjs/common';
 import { EngineNotReadyError } from '../../common/errors/engine-not-ready.error';
 import { EngineNotSupportedError } from '../../common/errors/engine-not-supported.error';
 import { MessageNotFoundError } from '../../common/errors/message-not-found.error';
@@ -2071,6 +2072,12 @@ export class BaileysAdapter implements IWhatsAppEngine {
    */
   private async postStatus(content: AnyMessageContent, options: StatusPostOptions): Promise<StatusResult> {
     this.ensureReady();
+    // Baileys posts to exactly the statusJidList allow-list, so unlike whatsapp-web.js (which
+    // broadcasts) an absent/empty recipients list would publish to nobody — reject it as a client
+    // error here rather than send a status no contact can see.
+    if (!options.recipients?.length) {
+      throw new BadRequestException('recipients is required to post a status on the Baileys engine');
+    }
     const statusJidList = options.recipients.map(r => this.sessionStore.toEngineJid(r));
     const sent = await this.sock!.sendMessage('status@broadcast', content, {
       statusJidList,

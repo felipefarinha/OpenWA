@@ -39,10 +39,11 @@ type StatusResult struct {
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
-// SendTextStatusRequest posts a text status. Recipients is required.
+// SendTextStatusRequest posts a text status. Recipients is required on the Baileys
+// engine only (absent/empty → 400 there); whatsapp-web.js ignores it — leave nil.
 type SendTextStatusRequest struct {
 	Text            string   `json:"text"`
-	Recipients      []string `json:"recipients"`
+	Recipients      []string `json:"recipients,omitempty"`
 	BackgroundColor string   `json:"backgroundColor,omitempty"`
 	Font            *int     `json:"font,omitempty"`
 }
@@ -55,15 +56,17 @@ type StatusMediaInput struct {
 }
 
 // SendImageStatusRequest posts an image status (nested {image:{...}} body).
+// Recipients: required on the Baileys engine only; omit on whatsapp-web.js.
 type SendImageStatusRequest struct {
 	Image      StatusMediaInput `json:"image"`
-	Recipients []string         `json:"recipients"`
+	Recipients []string         `json:"recipients,omitempty"`
 	Caption    string           `json:"caption,omitempty"`
 }
 
 // SendVideoStatusRequest posts a video status (nested {video:{...}} body).
+// Recipients: required on the Baileys engine only; omit on whatsapp-web.js.
 type SendVideoStatusRequest struct {
 	Video      StatusMediaInput `json:"video"`
-	Recipients []string         `json:"recipients"`
+	Recipients []string         `json:"recipients,omitempty"`
 	Caption    string           `json:"caption,omitempty"`
 }

@@ -2,7 +2,6 @@ import { Controller, Get, Post, Delete, Param, Body, Res, StreamableFile } from 
 import type { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { StatusService } from './status.service';
-import { StorageService } from '../../common/storage/storage.service';
 import { SendTextStatusDto } from './dto/send-text-status.dto';
 import { SendImageStatusDto, SendVideoStatusDto } from './dto/send-media-status.dto';
 import { RequireRole } from '../auth/decorators/auth.decorators';
@@ -11,10 +10,7 @@ import { ApiKeyRole } from '../auth/entities/api-key.entity';
 @ApiTags('status')
 @Controller('sessions/:sessionId/status')
 export class StatusController {
-  constructor(
-    private readonly statusService: StatusService,
-    private readonly storageService: StorageService,
-  ) {}
+  constructor(private readonly statusService: StatusService) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all contact status updates' })
@@ -41,9 +37,8 @@ export class StatusController {
     @Param('statusId') statusId: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { path, mimetype } = await this.statusService.getStatusMedia(sessionId, statusId);
-    const buffer = await this.storageService.getFile(path);
-    res.set({ 'Content-Type': mimetype });
+    const { buffer, mimetype } = await this.statusService.getStatusMedia(sessionId, statusId);
+    res.set({ 'Content-Type': mimetype, 'X-Content-Type-Options': 'nosniff' });
     return new StreamableFile(buffer);
   }
 
