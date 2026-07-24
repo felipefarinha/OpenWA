@@ -37,6 +37,12 @@ it('carries media and collapses the type to the status union', () => {
   expect(s.media).toEqual({ mimetype: 'image/jpeg', data: 'AAAA' });
 });
 
+it('carries text-status styling through to the store row', () => {
+  const s = buildIncomingStatus({ ...base, backgroundColor: '#25d366', font: 2 })!;
+  expect(s.backgroundColor).toBe('#25d366');
+  expect(s.font).toBe(2);
+});
+
 it('returns null when the message is not a status', () => {
   expect(buildIncomingStatus({ ...base, isStatusBroadcast: false })).toBeNull();
 });

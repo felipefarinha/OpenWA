@@ -937,6 +937,28 @@ describe('BaileysAdapter inbound fan-out', () => {
     expect(msg).toMatchObject({ id: 'ST1', isStatusBroadcast: true, author: '628111@c.us' });
   });
 
+  it('extracts text-status styling (backgroundArgb/font) from the extended-text content', async () => {
+    baileys.getContentType.mockReturnValue('extendedTextMessage');
+    const onMessage = jest.fn();
+    const adapter = newAdapter();
+    await adapter.initialize({ onMessage });
+    fakeSock.fire('messages.upsert', {
+      type: 'notify',
+      messages: [
+        {
+          key: { remoteJid: 'status@broadcast', participant: '628111@s.whatsapp.net', fromMe: false, id: 'ST2' },
+          message: { extendedTextMessage: { text: 'styled story', backgroundArgb: 0xff123456, font: 3 } },
+          messageTimestamp: 1700000002,
+        },
+      ],
+    });
+    await new Promise(r => setImmediate(r));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const msg = onMessage.mock.calls[0][0] as { backgroundColor?: string; font?: number };
+    expect(msg.backgroundColor).toBe('#123456');
+    expect(msg.font).toBe(3);
+  });
+
   it('extracts coordinates from an ephemeral (disappearing) location message', async () => {
     const onMessage = jest.fn();
     const adapter = newAdapter();

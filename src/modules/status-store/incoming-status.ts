@@ -37,6 +37,8 @@ export function buildIncomingStatus(msg: IncomingMessage): IncomingStatus | null
     contactPushName: msg.contact?.pushName,
     type: statusType(msg.type),
     caption: msg.body || undefined,
+    backgroundColor: msg.backgroundColor,
+    font: msg.font,
     media: msg.media
       ? {
           mimetype: msg.media.mimetype,

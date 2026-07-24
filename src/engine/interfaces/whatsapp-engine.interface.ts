@@ -106,6 +106,10 @@ export interface IncomingMessage {
   senderPhone?: string | null;
   /** Sender contact info, best-effort from the WhatsApp Web cache. Sync fields only (no network). */
   contact?: MessageContact;
+  /** Styling of a text status/story: background as `#RRGGBB`. Only set by engines that expose it. */
+  backgroundColor?: string;
+  /** Styling of a text status/story: the WhatsApp font index. Only set by engines that expose it. */
+  font?: number;
   media?: {
     mimetype: string;
     filename?: string;

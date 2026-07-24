@@ -187,6 +187,16 @@ function StatusMedia({
 // user can't build a list the backend is guaranteed to reject.
 const STATUS_RECIPIENTS_MAX = 256;
 
+// Approximate WhatsApp's text-status font slots with generic families (the actual faces are
+// proprietary); index 0 and unknown slots keep the UI default.
+const STATUS_FONT_FAMILY: Record<number, string> = {
+  1: 'serif',
+  2: 'monospace',
+  3: 'cursive',
+  4: 'fantasy',
+  5: 'ui-rounded, system-ui, sans-serif',
+};
+
 export function Chats() {
   const { t } = useTranslation();
   useDocumentTitle(t('nav.chats'));
@@ -1920,7 +1930,25 @@ export function Chats() {
                 </header>
                 <div className="messages-list" ref={statusFeedRef}>
                   {activeStatusGroup.items.map(item => (
-                    <div key={item.id} className="message-bubble incoming">
+                    <div
+                      key={item.id}
+                      className="message-bubble incoming"
+                      // A text status keeps the look it was posted with: background colour (white
+                      // text like WhatsApp) and the closest generic font family we have for the
+                      // proprietary WhatsApp font slots.
+                      style={
+                        item.type === 'text' && (item.backgroundColor || item.font)
+                          ? {
+                              ...(item.backgroundColor
+                                ? { backgroundColor: item.backgroundColor, color: '#fff' }
+                                : {}),
+                              ...(item.font && STATUS_FONT_FAMILY[item.font]
+                                ? { fontFamily: STATUS_FONT_FAMILY[item.font] }
+                                : {}),
+                            }
+                          : undefined
+                      }
+                    >
                       {item.mediaUrl && (
                         <StatusMedia
                           sessionId={selectedSessionId || null}

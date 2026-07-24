@@ -1767,6 +1767,9 @@ export class BaileysAdapter implements IWhatsAppEngine {
       normalizedForContext.documentMessage ??
       normalizedForContext.stickerMessage ??
       normalizedForContext.locationMessage;
+    // A text status's styling rides on the extended-text content (proto backgroundArgb/font) —
+    // surface it so the store/viewer can render the story the way it was posted.
+    const extText = normalizedForContext.extendedTextMessage;
     const contextInfo = (
       subForContext as
         | {
@@ -1814,6 +1817,8 @@ export class BaileysAdapter implements IWhatsAppEngine {
         quotedMessage,
         ephemeralDuration: contextInfo?.expiration ?? undefined,
         mentionedJids: contextInfo?.mentionedJid ?? undefined,
+        backgroundArgb: typeof extText?.backgroundArgb === 'number' ? extText.backgroundArgb : undefined,
+        font: typeof extText?.font === 'number' ? extText.font : undefined,
       },
       jid => this.sessionStore.toNeutralJid(jid),
     );

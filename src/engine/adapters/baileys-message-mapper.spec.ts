@@ -212,6 +212,24 @@ describe('buildIncomingMessageFromBaileys', () => {
     expect(r.author).toBe('628111@s.whatsapp.net');
   });
 
+  it('converts extended-text status styling: backgroundArgb -> #RRGGBB, font passed through', () => {
+    const r = buildIncomingMessageFromBaileys({
+      ...base,
+      remoteJid: 'status@broadcast',
+      participant: '628111@s.whatsapp.net',
+      backgroundArgb: 0xff25d366, // ARGB, alpha in the high byte
+      font: 2,
+    });
+    expect(r.backgroundColor).toBe('#25d366');
+    expect(r.font).toBe(2);
+  });
+
+  it('leaves styling undefined when the message carries none', () => {
+    const r = buildIncomingMessageFromBaileys({ ...base });
+    expect(r.backgroundColor).toBeUndefined();
+    expect(r.font).toBeUndefined();
+  });
+
   it('carries the push name onto contact when present', () => {
     const r = buildIncomingMessageFromBaileys({ ...base, pushName: 'Alice' });
     expect(r.contact).toEqual({ pushName: 'Alice' });

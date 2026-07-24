@@ -156,6 +156,10 @@ export interface BaileysIncomingFields {
   ephemeralDuration?: number;
   /** @mentioned engine JIDs from `contextInfo.mentionedJid`; normalized and surfaced as `mentionedIds`. */
   mentionedJids?: string[];
+  /** Styling of an extended-text (status) message: proto `backgroundArgb` (fixed32 ARGB). */
+  backgroundArgb?: number;
+  /** Styling of an extended-text (status) message: proto `font` (WhatsApp font index). */
+  font?: number;
 }
 
 /**
@@ -207,6 +211,14 @@ export function buildIncomingMessageFromBaileys(
 
   if (fields.pushName) {
     incoming.contact = { pushName: fields.pushName };
+  }
+
+  // Extended-text (status) styling: proto ARGB → the #RRGGBB the API/outbound DTOs speak.
+  if (fields.backgroundArgb !== undefined && Number.isFinite(fields.backgroundArgb)) {
+    incoming.backgroundColor = `#${(fields.backgroundArgb & 0xffffff).toString(16).padStart(6, '0')}`;
+  }
+  if (fields.font !== undefined) {
+    incoming.font = fields.font;
   }
 
   if (fields.media) {

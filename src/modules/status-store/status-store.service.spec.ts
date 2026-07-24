@@ -58,6 +58,24 @@ describe('StatusStoreService (ingest / list / getMedia)', () => {
     expect(row.mediaPath).toBeFalsy();
   });
 
+  it('ingest persists text-status styling and serves it back in the API shape', async () => {
+    const { row } = await service.ingest('sess', {
+      waStatusId: 'styled',
+      contactJid: '628111@c.us',
+      type: 'text',
+      caption: 'hi',
+      backgroundColor: '#25d366',
+      font: 2,
+      postedAt: Date.now(),
+    });
+    expect(row.backgroundColor).toBe('#25d366');
+    expect(row.font).toBe(2);
+
+    const styled = (await service.list('sess')).find(s => s.id === 'styled')!;
+    expect(styled.backgroundColor).toBe('#25d366');
+    expect(styled.font).toBe(2);
+  });
+
   it('ingest persists media to a file under the cap and records mediaPath', async () => {
     const { row } = await service.ingest('sess', {
       waStatusId: 'w2',
