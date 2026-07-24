@@ -56,6 +56,14 @@ export class Message {
   @Column({ nullable: true })
   chatName?: string;
 
+  /**
+   * Stable sender identity for a group message: the participant JID who actually posted (`from` is
+   * the group JID). Lets the chat view tell two same-named participants apart. Null on 1:1
+   * messages, outgoing echoes, and legacy rows.
+   */
+  @Column({ nullable: true })
+  author?: string;
+
   @Column()
   from: string;
 

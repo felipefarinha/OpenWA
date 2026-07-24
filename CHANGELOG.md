@@ -15,7 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every text story looking identical. The fields already existed on the API and SDK `StatusRecord`
   shapes; whatsapp-web.js does not expose styling, so statuses from that engine render as before.
 
+- **New statuses now appear in the dashboard in real time.** A freshly ingested contact status is
+  broadcast over the websocket as `status.received` (same payload as the webhook), and the Status
+  tab refreshes immediately instead of waiting for a focus refetch — including while a contact's
+  viewer is already open.
+
 ### Fixed
+
+- **Group messages now carry a stable sender identity, so same-named participants no longer blur
+  together.** Group messages persist the participant JID (new `author` column on `messages`) next
+  to the sender's display name, and the dashboard keys attribution runs and sender colors on that
+  identity instead of the name — two participants who share a pushName now get separate runs in
+  distinct colors instead of collapsing into one misattributed thread. Live, history-backfilled,
+  and websocket-delivered messages all carry it; legacy rows fall back to name-keying.
 
 - **Contacts with both a @lid and a phone identity now appear once in the status list.** Statuses
   arriving under a contact's @lid are resolved to their phone at read time — including mappings

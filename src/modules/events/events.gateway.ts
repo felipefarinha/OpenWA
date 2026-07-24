@@ -498,4 +498,13 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   emitCallReceived(sessionId: string, data: Record<string, unknown>) {
     this.emitToRooms(sessionId, 'call.received', data);
   }
+
+  /**
+   * Emit a freshly ingested contact status (story). Payload mirrors the `status.received`
+   * webhook — no media bytes, just identity/type/flags — so the dashboard can refresh its
+   * statuses view live instead of waiting for a focus refetch.
+   */
+  emitStatusReceived(sessionId: string, data: Record<string, unknown>) {
+    this.emitToRooms(sessionId, 'status.received', data);
+  }
 }

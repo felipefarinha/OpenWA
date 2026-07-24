@@ -65,6 +65,12 @@ interface MessageRevokedEvent {
   timestamp: number;
 }
 
+/** A freshly ingested contact status (story) — the dashboard uses it purely as a refetch signal. */
+interface StatusReceivedEvent {
+  sessionId: string;
+  timestamp: string;
+}
+
 interface WebSocketEvents {
   onSessionStatus?: (event: SessionStatusEvent) => void;
   onQRCode?: (event: QRCodeEvent) => void;
@@ -73,6 +79,7 @@ interface WebSocketEvents {
   onMessageReaction?: (event: MessageReactionEvent) => void;
   onMessageRevoked?: (event: MessageRevokedEvent) => void;
   onMessageEdited?: (event: MessageEditedEvent) => void;
+  onStatusReceived?: (event: StatusReceivedEvent) => void;
 }
 
 // Shape of the server -> client event envelope produced by the NestJS gateway.
@@ -206,6 +213,9 @@ export function useWebSocket(events: WebSocketEvents = {}) {
         case 'message.received':
         case 'message.sent':
           events.onMessage?.({ sessionId, message: data, timestamp: msg.timestamp });
+          break;
+        case 'status.received':
+          events.onStatusReceived?.({ sessionId, timestamp: msg.timestamp });
           break;
         case 'message.ack':
           events.onMessageAck?.({

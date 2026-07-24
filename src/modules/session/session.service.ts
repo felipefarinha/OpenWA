@@ -730,13 +730,14 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   /**
-   * Dispatches the opt-in `status.received` webhook once an inbound status row is ingested.
-   * `WebhookService.dispatch` already filters delivery to webhooks whose `events` array includes
-   * `status.received`, so no extra gating is needed here. No media bytes are included in the
-   * payload — consumers fetch media via the status media endpoint.
+   * Dispatches the opt-in `status.received` webhook once an inbound status row is ingested, and
+   * mirrors it over the websocket so the dashboard's statuses view refreshes live instead of
+   * waiting for a focus refetch. `WebhookService.dispatch` already filters delivery to webhooks
+   * whose `events` array includes `status.received`, so no extra gating is needed here. No media
+   * bytes are included in the payload — consumers fetch media via the status media endpoint.
    */
   private dispatchStatusReceived(sessionId: string, row: StatusUpdate): void {
-    void this.webhookService.dispatch(sessionId, 'status.received', {
+    const payload = {
       sessionId,
       statusId: row.waStatusId,
       contact: {
@@ -751,7 +752,9 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
       ...(row.omitReason ? { omitReason: row.omitReason } : {}),
       postedAt: row.postedAt,
       expiresAt: row.expiresAt,
-    });
+    };
+    void this.webhookService.dispatch(sessionId, 'status.received', payload);
+    this.eventsGateway.emitStatusReceived(sessionId, payload);
   }
 
   /**
@@ -807,6 +810,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
             sessionId: id,
             waMessageId: m.id,
             chatId: m.chatId,
+            author: m.author,
             from: m.from,
             to: m.to,
             body: m.body,
@@ -1053,6 +1057,9 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
               waMessageId: incoming.id || undefined,
               chatId: incoming.chatId,
               chatName,
+              // Group poster (participant JID) — `from` is the group JID, so this is the stable
+              // sender identity the chat view keys attribution runs/colors on. Undefined for 1:1.
+              author: incoming.author,
               from: incoming.from,
               to: incoming.to,
               body: incoming.body,

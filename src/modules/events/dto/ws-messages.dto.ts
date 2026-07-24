@@ -27,6 +27,7 @@ export const SUBSCRIBABLE_EVENTS = [
   'group.leave',
   'group.update',
   'call.received',
+  'status.received',
 ] as const;
 
 export type SubscribableEvent = (typeof SUBSCRIBABLE_EVENTS)[number] | '*';

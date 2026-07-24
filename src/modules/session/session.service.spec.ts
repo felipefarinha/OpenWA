@@ -145,6 +145,7 @@ describe('SessionService', () => {
       emitGroupLeave: jest.fn(),
       emitGroupUpdate: jest.fn(),
       emitCallReceived: jest.fn(),
+      emitStatusReceived: jest.fn(),
       emitQRCode: jest.fn(),
     };
 
@@ -1833,6 +1834,35 @@ describe('SessionService', () => {
       expect(row.metadata).toEqual({ media: marker });
     });
 
+    it('persists the group participant as author (the stable sender id attribution keys on)', async () => {
+      const callbacks = await startAndCaptureCallbacks();
+      // Pass the message through the hook chain untouched (the default mock replaces data with {}).
+      (hookManager.execute as jest.Mock).mockImplementation((_e: string, data: unknown) =>
+        Promise.resolve({ continue: true, data }),
+      );
+
+      callbacks.onMessage!(
+        makeMessage({
+          id: 'wa-grp-1',
+          from: '120363@g.us',
+          to: 'me@c.us',
+          chatId: '120363@g.us',
+          fromMe: false,
+          isGroup: true,
+          kind: 'group',
+          author: '628111@c.us',
+          contact: { id: '628111@c.us', pushName: 'Alice' },
+        }),
+      );
+      await flush();
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const row = (messageRepository.create as jest.Mock).mock.calls[0][0] as Partial<Message>;
+      expect(row.author).toBe('628111@c.us');
+      expect(row.from).toBe('120363@g.us');
+      expect(row.chatName).toBe('Alice');
+    });
+
     it('scopes the ack status UPDATE by sessionId, not just waMessageId', async () => {
       const callbacks = await startAndCaptureCallbacks();
       expect(typeof callbacks.onMessageAck).toBe('function');
@@ -2255,6 +2285,11 @@ describe('SessionService', () => {
           expiresAt: 1000 + 86400000,
         }),
       );
+      // …and the same payload goes over the websocket so the dashboard refreshes live.
+      expect(eventsGateway.emitStatusReceived).toHaveBeenCalledWith(
+        'sess-uuid-1',
+        expect.objectContaining({ statusId: 'st1', contact: { id: '628111@c.us', name: 'Alice' } }),
+      );
     });
 
     it('does not dispatch status.received for a duplicate delivery (ingest resolves created=false)', async () => {
@@ -2279,6 +2314,7 @@ describe('SessionService', () => {
       await flush();
 
       expect(dispatchedEvents('status.received')).toHaveLength(0);
+      expect(eventsGateway.emitStatusReceived).not.toHaveBeenCalled();
     });
 
     it('skips persist and dispatch for ephemeral messages when STORE_EPHEMERAL_MESSAGES=false', async () => {

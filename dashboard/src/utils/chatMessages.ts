@@ -16,6 +16,7 @@ export function mapEngineHistoryMessage(h: EngineHistoryMessage): ChatMessage {
     waMessageId: h.id,
     chatId: h.chatId,
     chatName: h.contact?.pushName ?? h.contact?.name,
+    author: h.author,
     from: h.from,
     to: h.to,
     body: h.body ?? '',
@@ -42,9 +43,24 @@ const msgTime = (m: ChatMessage): number =>
 export function mergeChatMessages(db: ChatMessage[], history: ChatMessage[]): ChatMessage[] {
   const byId = new Map<string, ChatMessage>();
   for (const m of history) byId.set(msgKey(m), m);
-  for (const m of db) byId.set(msgKey(m), m); // DB overwrites the engine copy (authoritative status)
+  for (const m of db) {
+    const key = msgKey(m);
+    const hist = byId.get(key);
+    // The DB copy wins (authoritative status) — but a legacy row has no stable sender id, so
+    // salvage the engine-history copy's author or two same-named participants collapse into one
+    // attribution run in the chat view.
+    byId.set(key, hist?.author && !m.author ? { ...m, author: hist.author } : m);
+  }
   return [...byId.values()].sort((a, b) => msgTime(a) - msgTime(b) || a.createdAt.localeCompare(b.createdAt));
 }
+
+/**
+ * Stable identity of a group message's sender, for attribution runs and sender colors: the
+ * participant JID (`author`) when present, falling back to the display name on legacy rows. Keying
+ * on this — not the name alone — keeps two participants who share a pushName from collapsing into
+ * one run with one color.
+ */
+export const senderKey = (m: Pick<ChatMessage, 'author' | 'chatName'>): string | undefined => m.author ?? m.chatName;
 
 // ChatMessageView extends ChatMessage with the view-only fields the chat page renders.
 // Lifted from Chats.tsx so hooks/utils can share the same shape.
@@ -125,6 +141,8 @@ export function mergeOrAppend(list: ChatMessageView[], incoming: ChatMessageView
   const next = list.slice();
   next[idx] = {
     ...incoming,
+    // An echo that lacks the stable sender id must not erase the one already cached.
+    author: incoming.author ?? existing.author,
     status: mergeDeliveryStatus(existing.status, incoming.status) ?? incoming.status,
     metadata: mergeMessageMetadata(existing.metadata, incoming.metadata),
   };
